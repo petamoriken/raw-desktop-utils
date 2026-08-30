@@ -13,7 +13,7 @@ export function attach(
   return Promise.reject(
     new NativeUnsupportedError(
       "linux",
-      "Poll XQueryPointer (and later wl_pointer); see native/linux/events.c.",
+      "Poll XQueryPointer (and later wl_pointer); see native/rde-events/src/stub.rs.",
     ),
   );
 }

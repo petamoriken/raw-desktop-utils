@@ -9,7 +9,7 @@ the OS pointer (and queued click / wheel / key events) through FFI and
 synthesizes the same event shapes a browser would dispatch.
 
 macOS is implemented. Windows and Linux export the same native ABI but are not
-implemented yet — see `native/windows/events.c` and `native/linux/events.c`.
+implemented yet — see the stubs in `native/rde-events/src/stub.rs`.
 
 ## Install
 
@@ -27,9 +27,12 @@ tables are dropped from the bundle:
 import { attach } from "raw-desktop-events/macos";
 ```
 
-Permissions: `--allow-ffi --allow-read --allow-write --allow-run --allow-env`.
-The first call compiles a small platform helper (`clang` on macOS) into `TMPDIR`
-and caches it by source checksum.
+Permissions: `--allow-ffi --allow-read --allow-write --allow-env` (add
+`--allow-run` only if you rebuild from Rust with `RDE_COMPILE=1`). By default
+the package loads a committed prebuilt (`native/prebuilt/`) so a `deno desktop`
+/ `deno compile` host does not need `cargo` or `clang`. Rebuild and refresh the
+prebuilt with `deno task build:native`. Set `RDE_COMPILE=1` to build the crate
+on the fly instead.
 
 ## Usage
 
@@ -86,12 +89,18 @@ inspect internals stay private.
 
 ## Native ABI
 
-All platforms expose the same C symbols (`rde_find_window`, `rde_snapshot`,
-`rde_poll_events`, …). Rebuild the current platform helper with:
+The helper is a Rust `cdylib` (`native/rde-events`). macOS is implemented;
+Windows and Linux export the same C symbols as stubs so they can be filled in on
+those machines.
 
 ```sh
 deno task build:native
+# optional:
+deno task build:native -- --target aarch64-apple-darwin
 ```
+
+That writes `native/prebuilt/<os>-<arch>.{dylib,dll,so}`. Runtime code embeds
+those bytes and writes them to `TMPDIR` before `dlopen`.
 
 ## License
 

@@ -2,6 +2,4 @@
 .deno/
 /tmp/
 *.swp
-native/macos/librde_events.dylib
-native/windows/rde_events.dll
-native/linux/librde_events.so
+native/rde-events/target

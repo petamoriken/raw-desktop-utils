@@ -18,12 +18,12 @@ async function openBackend(): Promise<NativeBackend> {
     case "windows":
       throw new NativeUnsupportedError(
         "windows",
-        "Poll GetCursorPos / GetAsyncKeyState and hook WH_GETMESSAGE; see native/windows/events.c.",
+        "Poll GetCursorPos / GetAsyncKeyState and hook WH_GETMESSAGE; see native/rde-events/src/stub.rs.",
       );
     case "linux":
       throw new NativeUnsupportedError(
         "linux",
-        "Poll XQueryPointer (and later wl_pointer); see native/linux/events.c.",
+        "Poll XQueryPointer (and later wl_pointer); see native/rde-events/src/stub.rs.",
       );
     default:
       throw new NativeUnsupportedError(Deno.build.os);

@@ -13,7 +13,7 @@ export function attach(
   return Promise.reject(
     new NativeUnsupportedError(
       "windows",
-      "Poll GetCursorPos / GetAsyncKeyState and hook WH_GETMESSAGE; see native/windows/events.c.",
+      "Poll GetCursorPos / GetAsyncKeyState and hook WH_GETMESSAGE; see native/rde-events/src/stub.rs.",
     ),
   );
 }

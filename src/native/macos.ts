@@ -7,8 +7,9 @@ import { inspectBranded, type InspectFn, kCustomInspect } from "../inspect.ts";
 import { ABI_VERSION, QUEUED_EVENT_BYTES, SNAPSHOT_BYTES } from "./abi.ts";
 import type { NativeBackend } from "./backend.ts";
 import { macKeys } from "../keys/macos.ts";
-import { compileNative, macosSpec } from "./compile.ts";
+import { compileRust } from "./compile.ts";
 import { decodeQueuedEvents, decodeSnapshot } from "./decode.ts";
+import { materializeLibrary } from "./load.ts";
 
 const SYMBOLS = {
   rde_abi_version: { parameters: [], result: "i32" },
@@ -77,18 +78,9 @@ export class MacosBackend implements NativeBackend {
 }
 
 export async function loadMacos(): Promise<MacosBackend> {
-  let path: string;
-  try {
-    path = await compileNative(macosSpec());
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
-      throw new Error(
-        "raw-desktop-events: clang is required to build the macOS helper. " +
-          "Install Xcode Command Line Tools (xcode-select --install).",
-      );
-    }
-    throw error;
-  }
+  const path = Deno.env.get("RDE_COMPILE") === "1"
+    ? await compileRust()
+    : await materializePrebuilt();
   const dl = Deno.dlopen(path, SYMBOLS);
   const backend = new MacosBackend(dl);
   if (backend.abiVersion !== ABI_VERSION) {
@@ -98,4 +90,9 @@ export async function loadMacos(): Promise<MacosBackend> {
     );
   }
   return backend;
+}
+
+async function materializePrebuilt(): Promise<string> {
+  const { darwinPrebuilt } = await import("./prebuilt/darwin.ts");
+  return await materializeLibrary(darwinPrebuilt(), "librde_events.dylib");
 }

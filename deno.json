@@ -19,7 +19,7 @@
   "imports": {
     "@std/assert": "jsr:@std/assert@1"
   },
-  "unstable": ["ffi"],
+  "unstable": ["ffi", "raw-imports"],
   "compilerOptions": {
     "lib": ["deno.window", "deno.unstable"]
   },

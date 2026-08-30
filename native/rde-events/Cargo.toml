@@ -1,0 +1,32 @@
+[package]
+name = "rde_events"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Native helper for raw-desktop-events (cdylib)"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+dispatch2 = "0.3"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = [
+  "NSApplication",
+  "NSEvent",
+  "NSGraphics",
+  "NSResponder",
+  "NSScreen",
+  "NSView",
+  "NSWindow",
+] }
+objc2-foundation = { version = "0.3", features = [
+  "NSArray",
+  "NSEnumerator",
+  "NSGeometry",
+  "NSString",
+  "NSThread",
+  "NSValue",
+] }
