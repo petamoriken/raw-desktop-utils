@@ -68,14 +68,35 @@ take `--allow-run`.
 - On macOS, stay in screen space. Cursor Y is `NSMaxY(viewOnScreen) - screen.y`.
   Do not use `convertPoint` or `isFlipped` on winit views; those invert hit
   tests.
-- On Windows, report client pixels **unscaled**. `deno desktop` sizes a
-  `BrowserWindow` in device pixels (640x480 stays 640x480 physical at 150%, and
-  `getSize()` agrees), so dividing by `GetDpiForWindow` would put `clientX` in a
-  different space from `getSize()` and the drawing surface.
+- On Windows, report client pixels **unscaled**. Whatever the host does with the
+  requested size, `GetClientRect` and `getSize()` agree: the webview backend
+  keeps a 640x480 window 640x480 physical at 150%, and the raw backend makes it
+  960x720 and reports 960x720. Dividing by `GetDpiForWindow` would put `clientX`
+  in a different space from `getSize()` and the drawing surface.
 - The Windows helper captures input with a thread-local `WH_GETMESSAGE` hook on
   the window's thread (the analogue of the macOS local monitor). It only reads
   messages when `wParam == PM_REMOVE`, otherwise a `PeekMessage` without
   `PM_REMOVE` reports them twice.
+- That hook is not enough on its own, so `rdu_attach` also registers raw input
+  with `RIDEV_INPUTSINK`. When `deno desktop` runs on its WebView2 backend the
+  window under the cursor belongs to a separate `msedgewebview2` process, and
+  wheel and key messages are queued there, never to this thread — only the
+  `GetCursorPos` / `GetAsyncKeyState` snapshot survives. `WM_INPUT` is delivered
+  to our own window whoever has focus. Never set `RIDEV_NOLEGACY`: the host
+  still needs its own input. Both paths stay live, so `push` drops an event the
+  two of them both reported.
+- Anything the Windows helper reads for a raw-input event must come from an
+  async / global API. `GetKeyState` and `GetKeyboardState` are synchronized to
+  the messages this thread has already taken off its queue, and raw input runs
+  ahead of those (under WebView2 they never arrive), so a Shift keydown would
+  report `shiftKey: false`. `GetAsyncKeyState` is the honest source; the Caps
+  Lock toggle bit is the one exception, since it has no async form.
+- `poll()` drains the native queue _before_ taking the snapshot, and a queued
+  press or release for a button whose edge the snapshot already reported is
+  dropped. Otherwise the two sources replay each other's edges. Because either
+  source can win, `detail` is threaded across polls in `SynthResult.clickCounts`
+  — the release has to report the count of the press it ends, or `dblclick`
+  never fires.
 - Close a native audio sink you opened. `AudioContext` only closes a sink it
   created itself, and a leaked one takes the process down with an access
   violation: Deno unloads the library at teardown while the audio callback is

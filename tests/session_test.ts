@@ -220,3 +220,27 @@ Deno.test("attachWith falls back to getNativeWindow on Linux", async () => {
   assertEquals(win.nativeCalls, 1);
   session.poll();
 });
+
+Deno.test("poll drains the native queue before sampling", () => {
+  const calls: string[] = [];
+  const backend = new FakeBackend([snap()]);
+  const snapshot = backend.snapshot.bind(backend);
+  const pollEvents = backend.pollEvents.bind(backend);
+  backend.snapshot = (handle) => {
+    calls.push("snapshot");
+    return snapshot(handle);
+  };
+  backend.pollEvents = (handle) => {
+    calls.push("pollEvents");
+    return pollEvents(handle);
+  };
+  using session = new InputSession(
+    desktopWindow(),
+    backend,
+    Deno.UnsafePointer.of(new Uint8Array(1)),
+    {},
+  );
+  session.poll();
+  // The snapshot has to be at least as new as the events it reconciles.
+  assertEquals(calls, ["pollEvents", "snapshot"]);
+});

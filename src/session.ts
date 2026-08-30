@@ -7,7 +7,7 @@ import { cloneSynthesized, type SynthesizedEvent } from "./events.ts";
 import { inspectBranded, type InspectFn, kCustomInspect } from "./inspect.ts";
 import { loadNative, type NativeBackend } from "./native/mod.ts";
 import { createScreen, type Screen } from "./screen.ts";
-import { synthesize } from "./synthesize.ts";
+import { type ClickCounts, synthesize } from "./synthesize.ts";
 import type {
   AttachOptions,
   DesktopWindow,
@@ -35,6 +35,7 @@ export class InputSession extends EventTarget {
   readonly #target: EventTarget | null;
   readonly #mouseEvents: boolean;
   #prev: PointerSnapshot | null = null;
+  #clickCounts: ClickCounts = {};
   #last: PointerSnapshot = emptySnapshot();
   #metrics: WindowMetrics | null = null;
   #closed = false;
@@ -132,12 +133,18 @@ export class InputSession extends EventTarget {
    */
   poll(): PointerSnapshot {
     this.#assertOpen();
-    const next = this.#native.snapshot(this.#handle);
+    // Drain the queue before sampling, so the snapshot is never older than the
+    // events it is reconciled against. The other order lets a press that lands
+    // between the two calls arrive with `buttons` still 0, which replays the
+    // press as a release and then presses again on the next poll.
     const queued = this.#native.pollEvents(this.#handle);
-    const { events } = synthesize(this.#prev, next, queued, {
+    const next = this.#native.snapshot(this.#handle);
+    const { events, clickCounts } = synthesize(this.#prev, next, queued, {
       mouseEvents: this.#mouseEvents,
       view: this.window,
+      clickCounts: this.#clickCounts,
     });
+    this.#clickCounts = clickCounts;
     this.#prev = next;
     this.#last = next;
     this.#remember(next);

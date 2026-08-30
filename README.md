@@ -152,7 +152,9 @@ monitor plus a Combined Session button sampler for synthesized clicks. It does
 not request Accessibility or Input Monitoring. Windows is Win32: window lookup
 through `EnumWindows`, live state from `GetCursorPos` / `GetAsyncKeyState`, and
 discrete events from a thread-local `WH_GETMESSAGE` hook on the window's own
-thread, so the window procedure is left alone. Linux is X11 or Wayland (same
+thread plus raw input registered with `RIDEV_INPUTSINK`, so the window procedure
+is left alone and wheel and key events still arrive when the host puts its
+content in another process (WebView2 does). Linux is X11 or Wayland (same
 `WAYLAND_DISPLAY` rule as laufey_winit).
 
 ```sh

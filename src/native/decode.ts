@@ -1,3 +1,4 @@
+import { locationFromCode } from "../keys/shared.ts";
 import type { KeyTranslator } from "../keys/types.ts";
 import {
   emptySnapshot,
@@ -66,6 +67,7 @@ export function decodeQueuedEvent(
     ? new TextDecoder().decode(buf.subarray(offset + 76, offset + 76 + keyLen))
     : "";
   const keyCode = v.getUint32(20, true);
+  const code = keys.codeFromKeyCode(keyCode);
   return {
     type: v.getUint32(0, true) as NativeEventKind,
     button: v.getUint32(4, true),
@@ -87,7 +89,8 @@ export function decodeQueuedEvent(
     twist: v.getFloat32(64, true),
     pointerType: pointerTypeFromNative(v.getUint32(68, true)),
     key: keys.keyFromEvent(keyCode, chars),
-    code: keys.codeFromKeyCode(keyCode),
+    code,
+    location: locationFromCode(code),
     repeat: false,
   };
 }

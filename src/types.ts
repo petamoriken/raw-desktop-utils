@@ -101,6 +101,8 @@ export type NativeQueuedEvent = {
   pointerType: PointerType;
   key: string;
   code: string;
+  /** `KeyboardEvent.location`, derived from `code`. */
+  location: number;
   repeat: boolean;
 };
 

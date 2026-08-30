@@ -1,5 +1,10 @@
 import { assert, assertEquals } from "@std/assert";
-import { MouseEvent, PointerEvent, WheelEvent } from "../src/events.ts";
+import {
+  type KeyboardEvent,
+  MouseEvent,
+  PointerEvent,
+  WheelEvent,
+} from "../src/events.ts";
 import { snapshotEqual, synthesize } from "../src/synthesize.ts";
 import {
   BUTTONS_PRIMARY,
@@ -54,6 +59,7 @@ function queued(
     pointerType: "mouse",
     key: "",
     code: "",
+    location: 0,
     repeat: false,
     ...partial,
   };
@@ -247,4 +253,103 @@ Deno.test("snapshotEqual uses Object.is so NaN matches NaN", () => {
     snapshotEqual(snap({ clientX: 0 }), snap({ clientX: -0 })),
     false,
   );
+});
+
+Deno.test("a press the snapshot already reported does not fire twice", () => {
+  // The snapshot won the race last poll, so `prev` is already pressed.
+  const { events } = synthesize(
+    snap({ clientX: 8, clientY: 9, buttons: BUTTONS_PRIMARY }),
+    snap({ clientX: 8, clientY: 9, buttons: BUTTONS_PRIMARY }),
+    [
+      queued({
+        type: NATIVE_EVENT_POINTER_DOWN,
+        button: 0,
+        buttons: BUTTONS_PRIMARY,
+        clientX: 8,
+        clientY: 9,
+      }),
+    ],
+  );
+  assertEquals(typesOf(events), []);
+});
+
+Deno.test("a release the snapshot already reported does not fire twice", () => {
+  const { events } = synthesize(
+    snap({ clientX: 8, clientY: 9, buttons: 0 }),
+    snap({ clientX: 8, clientY: 9, buttons: 0 }),
+    [
+      queued({
+        type: NATIVE_EVENT_POINTER_UP,
+        button: 0,
+        buttons: 0,
+        clientX: 8,
+        clientY: 9,
+      }),
+    ],
+  );
+  assertEquals(typesOf(events), []);
+});
+
+Deno.test("a queued press still wins when the snapshot has not caught up", () => {
+  const { events } = synthesize(
+    snap({ clientX: 8, clientY: 9, buttons: 0 }),
+    snap({ clientX: 8, clientY: 9, buttons: BUTTONS_PRIMARY }),
+    [
+      queued({
+        type: NATIVE_EVENT_POINTER_DOWN,
+        button: 0,
+        buttons: BUTTONS_PRIMARY,
+        clientX: 8,
+        clientY: 9,
+        clickCount: 2,
+      }),
+    ],
+  );
+  assertEquals(typesOf(events), ["pointerdown", "mousedown"]);
+  assertEquals((events[0] as PointerEvent).detail, 2);
+});
+
+Deno.test("a release reports the count of the press it ends", () => {
+  // The queue counted the second press; the snapshot, one poll later, is the
+  // only one that sees the release. `dblclick` still has to fire.
+  const down = synthesize(
+    snap({ buttons: 0 }),
+    snap({ buttons: BUTTONS_PRIMARY }),
+    [
+      queued({
+        type: NATIVE_EVENT_POINTER_DOWN,
+        button: 0,
+        buttons: BUTTONS_PRIMARY,
+        clickCount: 2,
+      }),
+    ],
+  );
+  assertEquals(down.clickCounts[0], 2);
+
+  const up = synthesize(
+    snap({ buttons: BUTTONS_PRIMARY }),
+    snap({ buttons: 0 }),
+    [],
+    { clickCounts: down.clickCounts },
+  );
+  assertEquals(typesOf(up.events), [
+    "pointerup",
+    "mouseup",
+    "click",
+    "dblclick",
+  ]);
+  assertEquals(up.clickCounts[0], undefined);
+});
+
+Deno.test("a queued key carries KeyboardEvent.location", () => {
+  const { events } = synthesize(snap(), snap(), [
+    queued({
+      type: NATIVE_EVENT_KEY_DOWN,
+      key: "Shift",
+      code: "ShiftRight",
+      location: 2,
+    }),
+  ]);
+  assertEquals(typesOf(events), ["keydown"]);
+  assertEquals((events[0] as KeyboardEvent).location, 2);
 });

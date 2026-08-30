@@ -23,7 +23,18 @@ export type SynthesizeOptions = {
   mouseEvents?: boolean;
   view?: EventTarget | null;
   pointerId?: number;
+  /**
+   * `detail` of the press each held button is still in, by button index.
+   * Threaded back from the previous {@linkcode SynthResult} so a release can
+   * report the count of the press it ends — that is what turns the second
+   * `click` of a double click into a `dblclick`, and a press and its release
+   * do not have to arrive from the same source or in the same poll.
+   */
+  clickCounts?: ClickCounts;
 };
+
+/** `detail` per held button index. */
+export type ClickCounts = Readonly<Record<number, number>>;
 
 const BUTTON_BITS = [1, 4, 2, 8, 16];
 
@@ -109,6 +120,7 @@ function mouseInit(
 export type SynthResult = {
   events: SynthesizedEvent[];
   state: PointerSnapshot;
+  clickCounts: ClickCounts;
 };
 
 function pushPointer(
@@ -236,18 +248,26 @@ function applyButtonDelta(
   out: SynthesizedEvent[],
   prev: PointerSnapshot,
   next: PointerSnapshot,
+  counts: Record<number, number>,
   opts: SynthesizeOptions,
 ) {
   const added = next.buttons & ~prev.buttons;
   const removed = prev.buttons & ~next.buttons;
   for (const bit of BUTTON_BITS) {
     if (added & bit) {
-      fireButtonDown(out, prev, next, buttonFromBit(bit), 1, opts);
+      const button = buttonFromBit(bit);
+      // A snapshot only sees that the button is down, never how many times it
+      // has been pressed; the queue is the only source of a real count.
+      counts[button] ??= 1;
+      fireButtonDown(out, prev, next, button, counts[button], opts);
     }
   }
   for (const bit of BUTTON_BITS) {
     if (removed & bit) {
-      fireButtonUp(out, prev, next, buttonFromBit(bit), 1, next.inside, opts);
+      const button = buttonFromBit(bit);
+      const count = counts[button] ?? 1;
+      delete counts[button];
+      fireButtonUp(out, prev, next, button, count, next.inside, opts);
     }
   }
 }
@@ -303,6 +323,7 @@ function fireKey(
     view: opts.view ?? null,
     key: ev.key,
     code: ev.code,
+    location: ev.location,
     keyCode: ev.keyCode,
     repeat: ev.repeat,
     ...modifiers(ev.modifiers),
@@ -324,6 +345,7 @@ export function synthesize(
   opts: SynthesizeOptions = {},
 ): SynthResult {
   const out: SynthesizedEvent[] = [];
+  const counts: Record<number, number> = { ...opts.clickCounts };
   let state = prev ? { ...prev } : null;
 
   if (!state) {
@@ -349,27 +371,27 @@ export function synthesize(
     if (moved(state, snap) && (snap.inside || state.inside)) {
       fireMove(out, state, snap, opts);
     }
+    // A snapshot can beat the queue to the same edge when the press lands
+    // between two polls. Whichever saw it first wins; the other is a repeat.
+    const bit = bitFromButton(ev.button);
     if (ev.type === 1) {
-      const down: PointerSnapshot = {
-        ...snap,
-        buttons: snap.buttons | bitFromButton(ev.button),
-      };
-      fireButtonDown(out, state, down, ev.button, ev.clickCount || 1, opts);
+      if (state.buttons & bit) {
+        state = snap;
+        continue;
+      }
+      const down: PointerSnapshot = { ...snap, buttons: snap.buttons | bit };
+      counts[ev.button] = ev.clickCount || 1;
+      fireButtonDown(out, state, down, ev.button, counts[ev.button], opts);
       state = down;
     } else if (ev.type === 2) {
-      const up: PointerSnapshot = {
-        ...snap,
-        buttons: snap.buttons & ~bitFromButton(ev.button),
-      };
-      fireButtonUp(
-        out,
-        state,
-        up,
-        ev.button,
-        ev.clickCount || 1,
-        snap.inside,
-        opts,
-      );
+      if (!(state.buttons & bit)) {
+        state = snap;
+        continue;
+      }
+      const up: PointerSnapshot = { ...snap, buttons: snap.buttons & ~bit };
+      const count = Math.max(ev.clickCount || 1, counts[ev.button] ?? 1);
+      delete counts[ev.button];
+      fireButtonUp(out, state, up, ev.button, count, snap.inside, opts);
       state = up;
     }
   }
@@ -379,10 +401,10 @@ export function synthesize(
     fireMove(out, state, next, opts);
   }
   if (state && state.buttons !== next.buttons) {
-    applyButtonDelta(out, state, next, opts);
+    applyButtonDelta(out, state, next, counts, opts);
   }
 
-  return { events: out, state: next };
+  return { events: out, state: next, clickCounts: counts };
 }
 
 export function snapshotEqual(a: PointerSnapshot, b: PointerSnapshot): boolean {
