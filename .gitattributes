@@ -1,0 +1,8 @@
+# deno fmt always writes LF, so keep the working tree LF everywhere. Without
+# this a Windows checkout with core.autocrlf=true can never pass `deno fmt
+# --check`.
+* text=auto eol=lf
+
+native/prebuilt/*.dll binary
+native/prebuilt/*.dylib binary
+native/prebuilt/*.so binary

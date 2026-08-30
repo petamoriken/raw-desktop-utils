@@ -12,6 +12,7 @@
 
 import {
   cargoArtifactName,
+  fileUrlToPath,
   prebuiltFileName,
   rustCrateDir,
   rustHostTriple,
@@ -95,10 +96,10 @@ async function buildWithCargo(triple: string): Promise<URL> {
     "build",
     "--release",
     "--manifest-path",
-    new URL("Cargo.toml", crate).pathname,
+    fileUrlToPath(new URL("Cargo.toml", crate)),
     "--target",
     triple,
-  ], crate.pathname);
+  ], fileUrlToPath(crate));
   if (code !== 0) Deno.exit(code);
   return new URL(
     `target/${triple}/release/${
@@ -130,8 +131,8 @@ async function buildWithDocker(triple: string): Promise<URL> {
     "-t",
     "rde-events-linux",
     "-f",
-    new URL("Dockerfile", crate).pathname,
-    crate.pathname,
+    fileUrlToPath(new URL("Dockerfile", crate)),
+    fileUrlToPath(crate),
   ]);
   if (imageCode !== 0) Deno.exit(imageCode);
   const code = await run("docker", [
@@ -140,7 +141,7 @@ async function buildWithDocker(triple: string): Promise<URL> {
     "--platform",
     platform,
     "-v",
-    `${repoRoot().pathname}:/work`,
+    `${fileUrlToPath(repoRoot())}:/work`,
     "-v",
     "rde-events-cargo-registry:/usr/local/cargo/registry",
     "-v",
@@ -178,9 +179,9 @@ async function build(args: string[]): Promise<void> {
     );
     await Deno.mkdir(new URL(".", dest), { recursive: true });
     await Deno.copyFile(artifact, dest);
-    console.log(`wrote ${dest.pathname} (${prebuiltFileName()})`);
+    console.log(`wrote ${fileUrlToPath(dest)} (${prebuiltFileName()})`);
   } else {
-    console.log(`wrote ${artifact.pathname}`);
+    console.log(`wrote ${fileUrlToPath(artifact)}`);
   }
 }
 

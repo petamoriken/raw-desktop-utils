@@ -12,7 +12,18 @@ export function checksum(bytes: Uint8Array): string {
 export function cachePath(outputName: string, digest: string): string {
   const dir = (Deno.env.get("TMPDIR") ?? Deno.env.get("TEMP") ?? "/tmp")
     .replace(/[/\\]$/, "");
-  return `${dir}/${outputName}-${digest}`;
+  const sep = Deno.build.os === "windows" ? "\\" : "/";
+  return `${dir}${sep}${outputName}-${digest}`;
+}
+
+/**
+ * `file:` URL to a native path. `URL.pathname` keeps a leading slash and
+ * percent escapes, so on Windows it is not a path a process can `cd` into.
+ */
+export function fileUrlToPath(url: URL): string {
+  const decoded = decodeURIComponent(url.pathname);
+  if (Deno.build.os !== "windows") return decoded;
+  return decoded.replace(/^\/(?=[A-Za-z]:)/, "").replace(/\//g, "\\");
 }
 
 export async function materializeLibrary(
