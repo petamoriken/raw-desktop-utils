@@ -1,3 +1,8 @@
+import {
+  cancelAnimationFrame,
+  type FrameRequestCallback,
+  requestAnimationFrame,
+} from "./animation_frame.ts";
 import type { InputSessionEventMap } from "./event_map.ts";
 import { cloneSynthesized, type SynthesizedEvent } from "./events.ts";
 import { inspectBranded, type InspectFn, kCustomInspect } from "./inspect.ts";
@@ -80,6 +85,14 @@ export class InputSession extends EventTarget {
 
   [Symbol.dispose](): void {
     this.close();
+  }
+
+  requestAnimationFrame(callback: FrameRequestCallback): number {
+    return requestAnimationFrame(callback);
+  }
+
+  cancelAnimationFrame(handle: number): void {
+    cancelAnimationFrame(handle);
   }
 
   override addEventListener<K extends keyof InputSessionEventMap>(

@@ -5,6 +5,11 @@
  * This package samples the OS via FFI and synthesizes the same event
  * shapes a browser would dispatch.
  */
+export {
+  cancelAnimationFrame,
+  requestAnimationFrame,
+} from "./src/animation_frame.ts";
+export type { FrameRequestCallback } from "./src/animation_frame.ts";
 export { attach, InputSession } from "./src/session.ts";
 export type { InputSessionEventMap } from "./src/event_map.ts";
 export {

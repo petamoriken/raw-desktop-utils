@@ -4,7 +4,7 @@
  *
  *   deno desktop --allow-ffi --allow-read --allow-write --allow-run --allow-env examples/basic.ts
  */
-import { attach } from "../mod.ts";
+import { attach, requestAnimationFrame } from "../mod.ts";
 
 const TITLE = "raw-desktop-events example";
 
@@ -18,7 +18,13 @@ const win = new Deno.BrowserWindow({
   height: 480,
 });
 
-using input = await attach(win, { title: TITLE, autoPoll: 16 });
+using input = await attach(win, { title: TITLE });
+
+function frame(_time: number) {
+  input.poll();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
 
 input.addEventListener("pointermove", (event) => {
   console.log("move", event.clientX, event.clientY, event.buttons);

@@ -17,7 +17,7 @@ Intended for [JSR](https://jsr.io). Until it is published, import from the repo
 path:
 
 ```ts
-import { attach } from "../raw-desktop-events/mod.ts";
+import { attach, requestAnimationFrame } from "../raw-desktop-events/mod.ts";
 ```
 
 Vite / esbuild should import a platform subpath so unused OS backends and key
@@ -47,12 +47,18 @@ input.addEventListener("pointerdown", (event) => {
   if (event.button === 0) game.click(event.clientX, event.clientY);
 });
 
-// Inside the render loop:
-input.poll();
+function frame(_time: number) {
+  input.poll();
+  game.draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
 ```
 
 `addEventListener` is typed like the DOM: `"pointermove"` gives a
 `PointerEvent`, `"wheel"` a `WheelEvent`, `"keydown"` a `KeyboardEvent`.
+`requestAnimationFrame` / `cancelAnimationFrame` match the HTML `Window` methods
+(a display-aligned polyfill when the runtime has none).
 
 Listen on the **session**, not on `BrowserWindow`. The window may still emit
 incomplete mouse events; mixing the two sources can double-fire clicks.
