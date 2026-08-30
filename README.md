@@ -78,6 +78,12 @@ area changes between polls.
 | `autoPoll`        | Interval in ms; omit to poll yourself.                                                                                                                      |
 | `locateTimeoutMs` | How long to wait for the window to appear (default 500).                                                                                                    |
 
+`attach` finds the content view from `options.native` or `title` first. It only
+calls `window.getNativeWindow()` when those fail (or on Linux, to pick up a
+Wayland `displayHandle`). On macOS `deno desktop` raw, `getNativeWindow()` can
+panic off the main thread, so a title or an existing `NSView*` is the supported
+path.
+
 Coordinates use a **top-left** origin in logical (point) pixels of the content
 view, the same space as `window.getSize()`. That matches CSS `clientX` /
 `clientY`. `devicePixelRatio` is the physical backing size of that space (Retina
@@ -141,11 +147,13 @@ build an `AudioBuffer` from PCM.
 
 ## Native ABI
 
-The helper is a Rust `cdylib` (`native/rdu`). macOS is AppKit. Windows is Win32:
-window lookup through `EnumWindows`, live state from `GetCursorPos` /
-`GetAsyncKeyState`, and discrete events from a thread-local `WH_GETMESSAGE` hook
-on the window's own thread, so the window procedure is left alone. Linux is X11
-or Wayland (same `WAYLAND_DISPLAY` rule as laufey_winit).
+The helper is a Rust `cdylib` (`native/rdu`). macOS is AppKit: a local NSEvent
+monitor plus a Combined Session button sampler for synthesized clicks. It does
+not request Accessibility or Input Monitoring. Windows is Win32: window lookup
+through `EnumWindows`, live state from `GetCursorPos` / `GetAsyncKeyState`, and
+discrete events from a thread-local `WH_GETMESSAGE` hook on the window's own
+thread, so the window procedure is left alone. Linux is X11 or Wayland (same
+`WAYLAND_DISPLAY` rule as laufey_winit).
 
 ```sh
 deno task build:native -- build

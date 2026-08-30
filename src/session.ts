@@ -269,10 +269,17 @@ export async function attachWith(
   win: DesktopWindow,
   options: AttachOptions = {},
 ): Promise<InputSession> {
-  const handles = extractNativeHandles(win);
-  const handle = options.native ?? handles.window ??
-    await locateHandle(native, options);
-  const display = options.display ?? handles.display;
+  // Prefer an explicit handle or a title search. `getNativeWindow()` is last
+  // because on macOS `deno desktop` raw, that call can panic off the main
+  // thread (`raw-window-metal`: "can only access NSView on the main thread").
+  let handle = options.native ?? null;
+  let display = options.display ?? null;
+  if (!handle) handle = await locateHandle(native, options);
+  if (!handle || (!display && native.os === "linux")) {
+    const extracted = extractNativeHandles(win);
+    handle ??= extracted.window;
+    display ??= extracted.display;
+  }
   if (!handle) {
     const hint = options.title
       ? ` (title=${JSON.stringify(options.title)})`

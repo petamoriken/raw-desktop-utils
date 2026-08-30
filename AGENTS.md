@@ -37,7 +37,11 @@ take `--allow-run`.
   After changing `native/rdu/src/audio.rs`, rebuild the prebuilt. ABI is 3.
 - `InputSession.poll()` diffs a native snapshot plus a queued event list into
   Pointer / Mouse / Wheel / Keyboard events. Listeners go on the **session**,
-  not `BrowserWindow` (that source can double-fire).
+  not `BrowserWindow` (that source can double-fire). On macOS the queue is a
+  local NSEvent monitor plus a 4 ms Combined Session button sampler. Do not add
+  a CGEvent tap or global monitor (those need Input Monitoring / Accessibility).
+  Quartz posts update `mouseLocation` (hover works) but often skip the local
+  monitor and `NSEvent.pressedMouseButtons`.
 - Coordinates are content-view logical pixels, **top-left** origin (`clientX` /
   `clientY`), in the same space as `window.getSize()`.
 - Native helper is the Rust cdylib `native/rdu`. macOS is AppKit (`macos.rs`);
@@ -47,6 +51,11 @@ take `--allow-run`.
   targets. Linux prebuilts are produced in Docker so they can be built on a Mac.
   Wayland cannot list other clients: pass `options.native` /
   `getNativeWindow().windowHandle` (and `displayHandle`).
+- `attach` locates the view by `options.native` or title first. It must not call
+  `BrowserWindow.getNativeWindow()` on macOS unless those fail: the raw backend
+  panics off the main thread (`can only access NSView on the main
+  thread`).
+  Linux still falls back to `getNativeWindow` for the Wayland display pointer.
 - Runtime always loads `native/prebuilt/<os>-<arch>.*` (embedded as bytes,
   written to `TMPDIR`). It does not invoke `cargo`. JSR `publish.include` is
   `native/prebuilt/**` only.
@@ -84,5 +93,5 @@ This is not a browser. After input, hit-test, or native ABI changes:
 
 1. `deno task check`
 2. If Rust changed, confirm `native/prebuilt/` was regenerated
-3. For real pointer/click behavior, run a `deno desktop` raw app (see
-   `examples/basic.ts`) and hover/click the content view
+3. For real pointer/click behavior, run `deno task example` (`hit-test.app`) and
+   hover/click the content view. Bare `deno desktop` uses webview.

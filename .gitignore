@@ -3,3 +3,8 @@
 /tmp/
 *.swp
 native/rdu/target
+*.app/
+hit-test.dylib
+hit-test.app.dylib
+examples/*.log
+examples/libfill.dylib

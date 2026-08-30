@@ -42,6 +42,10 @@ objc2-app-kit = { version = "0.3", features = [
   "NSView",
   "NSWindow",
 ] }
+objc2-core-graphics = { version = "0.3", features = [
+  "CGEventSource",
+  "CGEventTypes",
+] }
 objc2-foundation = { version = "0.3", features = [
   "NSArray",
   "NSEnumerator",

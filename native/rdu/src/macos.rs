@@ -1,9 +1,16 @@
 //! AppKit backend. Coordinates stay in screen space with a top-left origin.
+//!
+//! Discrete clicks and keys come from a local NSEvent monitor. Automation
+//! (Quartz posts) updates `mouseLocation` but often never enters this app's
+//! NSEvent queue, and `NSEvent.pressedMouseButtons` is HID-only. A 4 ms
+//! Combined Session button sampler fills that gap for clicks. Do not install
+//! a CGEvent tap or global monitor: those need Input Monitoring / Accessibility.
 
 use std::ffi::{c_void, CStr};
 use std::ptr::{self, NonNull};
-use std::sync::atomic::{AtomicI32, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use block2::RcBlock;
 use dispatch2::DispatchQueue;
@@ -14,6 +21,7 @@ use objc2_app_kit::{
     NSApplication, NSEvent, NSEventMask, NSEventModifierFlags, NSEventSubtype, NSEventType,
     NSScreen, NSView, NSWindow,
 };
+use objc2_core_graphics::{CGEventSource, CGEventSourceStateID, CGMouseButton};
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString, NSThread};
 
 use crate::abi::{
@@ -37,10 +45,47 @@ struct Tablet {
     pointer_type: u32,
 }
 
+/// Last few queued events, used to drop the same click when both the
+/// local monitor and the Combined Session sampler observe it.
+const RECENT_CAP: usize = 8;
+const DEDUPE_NS: u128 = 8_000_000;
+
+#[derive(Clone, Copy)]
+struct Recent {
+    type_: u32,
+    button: u32,
+    key_code: u32,
+    click_count: u32,
+    client_x: f32,
+    client_y: f32,
+    delta_x: f32,
+    delta_y: f32,
+    at: Option<Instant>,
+}
+
+impl Recent {
+    const fn empty() -> Self {
+        Self {
+            type_: 0,
+            button: 0,
+            key_code: 0,
+            click_count: 0,
+            client_x: 0.0,
+            client_y: 0.0,
+            delta_x: 0.0,
+            delta_y: 0.0,
+            at: None,
+        }
+    }
+}
+
 struct State {
     queue: Queue,
     attached: *mut c_void,
     monitor: Option<Retained<AnyObject>>,
+    recent: [Recent; RECENT_CAP],
+    recent_n: usize,
+    last_buttons: Option<u32>,
     tablet: Tablet,
 }
 
@@ -54,6 +99,9 @@ static STATE: Mutex<State> = Mutex::new(State {
     },
     attached: ptr::null_mut(),
     monitor: None,
+    recent: [Recent::empty(); RECENT_CAP],
+    recent_n: 0,
+    last_buttons: None,
     tablet: Tablet {
         pressure: -1.0,
         tilt_x: 0.0,
@@ -69,7 +117,11 @@ extern "C" fn call_once<F: FnOnce()>(ctx: *mut c_void) {
 }
 
 fn on_main<F: FnOnce()>(work: F) {
-    if NSThread::isMainThread_class() || !app_is_running() {
+    // Always hop when we are not on the main thread. `NSApp.isRunning` is
+    // only readable on the main thread, so a "not running" shortcut would
+    // run AppKit work on the Deno worker and `require_mtm` would fail
+    // (`find_window` / `snapshot` would look like a missing window).
+    if NSThread::isMainThread_class() {
         work();
         return;
     }
@@ -77,10 +129,6 @@ fn on_main<F: FnOnce()>(work: F) {
     unsafe {
         DispatchQueue::main().exec_sync_f(ctx, call_once::<F>);
     }
-}
-
-fn app_is_running() -> bool {
-    MainThreadMarker::new().is_some_and(|mtm| NSApplication::sharedApplication(mtm).isRunning())
 }
 
 fn require_mtm() -> Option<MainThreadMarker> {
@@ -273,8 +321,65 @@ fn event_for_attached(event: &NSEvent, view: &NSView, mtm: MainThreadMarker) -> 
     map_screen(view, event_screen(event, mtm), false, mtm).is_some_and(|m| m.inside)
 }
 
+fn session_buttons() -> u32 {
+    let state = CGEventSourceStateID::CombinedSessionState;
+    let mut bits = 0u32;
+    if CGEventSource::button_state(state, CGMouseButton::Left) {
+        bits |= 1;
+    }
+    if CGEventSource::button_state(state, CGMouseButton::Right) {
+        bits |= 2;
+    }
+    if CGEventSource::button_state(state, CGMouseButton::Center) {
+        bits |= 4;
+    }
+    bits | dom_buttons(NSEvent::pressedMouseButtons())
+}
+
+fn same_recent(a: &Recent, ev: &QueuedEvent) -> bool {
+    a.type_ == ev.type_
+        && a.button == ev.button
+        && a.key_code == ev.key_code
+        && a.click_count == ev.click_count
+        && (a.client_x - ev.client_x).abs() < 1.0
+        && (a.client_y - ev.client_y).abs() < 1.0
+        && (a.delta_x - ev.delta_x).abs() < 0.5
+        && (a.delta_y - ev.delta_y).abs() < 0.5
+}
+
 fn push(ev: QueuedEvent) {
     let mut state = STATE.lock().expect("rdu state");
+    let now = Instant::now();
+    for recent in state.recent.iter().take(state.recent_n) {
+        let Some(at) = recent.at else {
+            continue;
+        };
+        if now.duration_since(at).as_nanos() > DEDUPE_NS {
+            continue;
+        }
+        if same_recent(recent, &ev) {
+            return;
+        }
+    }
+    let slot = if state.recent_n < RECENT_CAP {
+        let i = state.recent_n;
+        state.recent_n += 1;
+        i
+    } else {
+        state.recent.rotate_left(1);
+        RECENT_CAP - 1
+    };
+    state.recent[slot] = Recent {
+        type_: ev.type_,
+        button: ev.button,
+        key_code: ev.key_code,
+        click_count: ev.click_count,
+        client_x: ev.client_x,
+        client_y: ev.client_y,
+        delta_x: ev.delta_x,
+        delta_y: ev.delta_y,
+        at: Some(now),
+    };
     let q = &mut state.queue;
     if q.count == QUEUE_CAP {
         q.head = (q.head + 1) % QUEUE_CAP;
@@ -324,7 +429,7 @@ fn handle_event(event: &NSEvent) {
 
     let mut ev = QueuedEvent::empty();
     ev.modifiers = modifiers(event.modifierFlags());
-    ev.buttons = dom_buttons(NSEvent::pressedMouseButtons());
+    ev.buttons = session_buttons();
     ev.click_count = event.clickCount() as u32;
     ev.key_code = event.keyCode() as u32;
     ev.pressure = -1.0;
@@ -382,11 +487,8 @@ fn handle_event(event: &NSEvent) {
     }
 }
 
-fn install_monitor(state: &mut State) {
-    if state.monitor.is_some() {
-        return;
-    }
-    let mask = NSEventMask::LeftMouseDown
+fn event_mask() -> NSEventMask {
+    NSEventMask::LeftMouseDown
         | NSEventMask::LeftMouseUp
         | NSEventMask::RightMouseDown
         | NSEventMask::RightMouseUp
@@ -395,12 +497,109 @@ fn install_monitor(state: &mut State) {
         | NSEventMask::ScrollWheel
         | NSEventMask::KeyDown
         | NSEventMask::KeyUp
-        | NSEventMask::TabletPoint;
-    let block = RcBlock::new(|event: NonNull<NSEvent>| -> *mut NSEvent {
-        handle_event(unsafe { event.as_ref() });
-        event.as_ptr()
+        | NSEventMask::TabletPoint
+}
+
+fn bit_to_dom_button(bit: u32) -> u32 {
+    match bit {
+        1 => 0,
+        2 => 2,
+        4 => 1,
+        8 => 3,
+        16 => 4,
+        _ => 0,
+    }
+}
+
+fn push_button_delta(prev: u32, next: u32, view: &NSView, mtm: MainThreadMarker) {
+    let screen = NSEvent::mouseLocation();
+    let Some(mapped) = map_screen(view, screen, false, mtm) else {
+        return;
+    };
+    if !mapped.inside && prev == 0 {
+        return;
+    }
+    let mods = modifiers(NSEvent::modifierFlags_class());
+    for bit in [1u32, 2, 4, 8, 16] {
+        let was = prev & bit != 0;
+        let is = next & bit != 0;
+        if was == is {
+            continue;
+        }
+        let mut ev = QueuedEvent::empty();
+        ev.type_ = if is { EV_POINTER_DOWN } else { EV_POINTER_UP };
+        ev.button = bit_to_dom_button(bit);
+        ev.buttons = next;
+        ev.modifiers = mods;
+        ev.click_count = 1;
+        ev.client_x = mapped.client_x;
+        ev.client_y = mapped.client_y;
+        ev.screen_x = mapped.screen_x;
+        ev.screen_y = mapped.screen_y;
+        ev.pressure = -1.0;
+        push(ev);
+        if is {
+            if let Some(window) = view.window() {
+                window.makeKeyAndOrderFront(None);
+            }
+        }
+    }
+}
+
+fn sample_buttons() {
+    let attached = match STATE.lock() {
+        Ok(s) => s.attached,
+        Err(_) => return,
+    };
+    if attached.is_null() {
+        return;
+    }
+    let Some(mtm) = require_mtm() else {
+        return;
+    };
+    let Some(view) = as_view(attached) else {
+        return;
+    };
+    let buttons = session_buttons();
+    let prev = {
+        let mut state = match STATE.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let prev = state.last_buttons;
+        state.last_buttons = Some(buttons);
+        prev
+    };
+    let Some(prev) = prev else {
+        return;
+    };
+    if prev != buttons {
+        push_button_delta(prev, buttons, &view, mtm);
+    }
+}
+
+fn start_sampler() {
+    static STARTED: AtomicBool = AtomicBool::new(false);
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let _ = std::thread::Builder::new().name("rdu-sample".into()).spawn(|| loop {
+        std::thread::sleep(Duration::from_millis(4));
+        on_main(sample_buttons);
     });
-    state.monitor = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(mask, &block) };
+}
+
+fn install_monitor(state: &mut State) {
+    if state.monitor.is_none() {
+        let mask = event_mask();
+        let block = RcBlock::new(|event: NonNull<NSEvent>| -> *mut NSEvent {
+            handle_event(unsafe { event.as_ref() });
+            event.as_ptr()
+        });
+        state.monitor =
+            unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(mask, &block) };
+    }
+    start_sampler();
 }
 
 fn remove_monitor(state: &mut State) {
@@ -479,6 +678,9 @@ pub extern "C" fn rdu_attach(view_ptr: *mut c_void) -> i32 {
         state.attached = view_ptr;
         state.queue.head = 0;
         state.queue.count = 0;
+        state.recent = [Recent::empty(); RECENT_CAP];
+        state.recent_n = 0;
+        state.last_buttons = None;
         install_monitor(&mut state);
         ok_store.store(1, Ordering::SeqCst);
     });
@@ -532,7 +734,7 @@ pub unsafe extern "C" fn rdu_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
             client_y: mapped.client_y,
             screen_x: mapped.screen_x,
             screen_y: mapped.screen_y,
-            buttons: dom_buttons(NSEvent::pressedMouseButtons()),
+            buttons: session_buttons(),
             modifiers: modifiers(NSEvent::modifierFlags_class()),
             pressure: tablet.pressure,
             tilt_x: tablet.tilt_x,

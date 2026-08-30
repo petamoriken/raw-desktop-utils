@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import type { NativeBackend } from "../src/native/backend.ts";
-import { InputSession } from "../src/session.ts";
+import { attachWith, InputSession } from "../src/session.ts";
+import type { DesktopWindow } from "../src/types.ts";
 import {
   emptySnapshot,
   type NativeQueuedEvent,
@@ -21,17 +22,24 @@ function snap(partial: Partial<PointerSnapshot> = {}): PointerSnapshot {
 }
 
 class FakeBackend implements NativeBackend {
-  readonly os = "test";
+  readonly os: string;
   #samples: PointerSnapshot[];
   #queued: NativeQueuedEvent[][];
+  #found: Deno.PointerValue;
 
-  constructor(samples: PointerSnapshot[], queued: NativeQueuedEvent[][] = []) {
+  constructor(
+    samples: PointerSnapshot[],
+    queued: NativeQueuedEvent[][] = [],
+    options: { os?: string; found?: Deno.PointerValue } = {},
+  ) {
+    this.os = options.os ?? "test";
     this.#samples = samples;
     this.#queued = queued;
+    this.#found = options.found ?? null;
   }
 
   findWindow(_title: string): Deno.PointerValue {
-    return null;
+    return this.#found;
   }
   findFrontWindow(): Deno.PointerValue {
     return null;
@@ -157,4 +165,58 @@ Deno.test("session inner size falls back to window.getSize()", () => {
   assertEquals(session.devicePixelRatio, 1);
   assertEquals(session.outerWidth, 100);
   assertEquals(session.outerHeight, 80);
+});
+
+function pointerHandle(): Deno.PointerValue {
+  return Deno.UnsafePointer.of(new Uint8Array(1));
+}
+
+function windowWithNative(
+  handle: Deno.PointerValue,
+): DesktopWindow & { nativeCalls: number } {
+  const win = desktopWindow() as unknown as DesktopWindow & {
+    nativeCalls: number;
+    getNativeWindow: () => { windowHandle: Deno.PointerValue };
+  };
+  win.nativeCalls = 0;
+  win.getNativeWindow = () => {
+    win.nativeCalls += 1;
+    return { windowHandle: handle };
+  };
+  return win;
+}
+
+Deno.test("attachWith uses options.native and skips getNativeWindow", async () => {
+  const handle = pointerHandle();
+  const win = windowWithNative(pointerHandle());
+  using session = await attachWith(new FakeBackend([snap()]), win, {
+    native: handle,
+    locateTimeoutMs: 0,
+  });
+  assertEquals(win.nativeCalls, 0);
+  session.poll();
+});
+
+Deno.test("attachWith locates by title and skips getNativeWindow", async () => {
+  const handle = pointerHandle();
+  const win = windowWithNative(pointerHandle());
+  using session = await attachWith(
+    new FakeBackend([snap()], [], { found: handle }),
+    win,
+    { title: "Game", locateTimeoutMs: 0 },
+  );
+  assertEquals(win.nativeCalls, 0);
+  session.poll();
+});
+
+Deno.test("attachWith falls back to getNativeWindow on Linux", async () => {
+  const handle = pointerHandle();
+  const win = windowWithNative(handle);
+  using session = await attachWith(
+    new FakeBackend([snap()], [], { os: "linux" }),
+    win,
+    { locateTimeoutMs: 0 },
+  );
+  assertEquals(win.nativeCalls, 1);
+  session.poll();
 });
