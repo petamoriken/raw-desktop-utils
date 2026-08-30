@@ -10,6 +10,9 @@ license = "MIT"
 crate-type = ["cdylib"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
+wayland-backend = { version = "0.3", features = ["client_system"] }
+wayland-client = "0.31"
+wayland-sys = { version = "0.31", features = ["client"] }
 x11rb = "0.13"
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -16,7 +16,7 @@ export async function attach(
   if (Deno.build.os !== "linux") {
     throw new NativeUnsupportedError(
       "linux",
-      "The X11 helper must be loaded on Linux.",
+      "The X11 / Wayland helper must be loaded on Linux.",
     );
   }
   return attachWith(await loadLinux(), win, options);

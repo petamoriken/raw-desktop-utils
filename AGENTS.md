@@ -27,9 +27,11 @@ take `--allow-run`.
 - Coordinates are content-view logical pixels, **top-left** origin (`clientX` /
   `clientY`).
 - Native helper is the Rust cdylib `native/rde-events`. macOS is AppKit
-  (`macos.rs`); Linux is X11 via `x11rb` (`linux.rs`, Wayland later); Windows is
-  still a stub (`stub.rs`). Linux prebuilts are produced in Docker so they can
-  be built on a Mac.
+  (`macos.rs`); Linux dispatches like laufey_winit (`WAYLAND_DISPLAY` set →
+  Wayland in `linux/wayland.rs`, else X11 via `x11rb` in `linux/x11.rs`);
+  Windows is still a stub (`stub.rs`). Linux prebuilts are produced in Docker so
+  they can be built on a Mac. Wayland cannot list other clients: pass
+  `options.native` / `getNativeWindow().windowHandle` (and `displayHandle`).
 - Runtime always loads `native/prebuilt/<os>-<arch>.*` (embedded as bytes,
   written to `TMPDIR`). It does not invoke `cargo`. JSR `publish.include` is
   `native/prebuilt/**` only.

@@ -35,7 +35,7 @@ export class MacosBackend implements NativeBackend {
     return this.#dl.symbols.rde_find_front_window();
   }
 
-  attach(handle: Deno.PointerValue): boolean {
+  attach(handle: Deno.PointerValue, _display?: Deno.PointerValue): boolean {
     return this.#dl.symbols.rde_attach(handle) === 1;
   }
 

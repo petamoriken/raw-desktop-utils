@@ -97,6 +97,17 @@ async function buildWithDocker(triple: string): Promise<URL> {
   const destName = tripleToPrebuilt(triple);
   const dest = new URL(`../prebuilt/${destName}`, crate);
   await Deno.mkdir(new URL(".", dest), { recursive: true });
+  const imageCode = await run("docker", [
+    "build",
+    "--platform",
+    platform,
+    "-t",
+    "rde-events-linux",
+    "-f",
+    new URL("Dockerfile", crate).pathname,
+    crate.pathname,
+  ]);
+  if (imageCode !== 0) Deno.exit(imageCode);
   const code = await run("docker", [
     "run",
     "--rm",
@@ -114,7 +125,7 @@ async function buildWithDocker(triple: string): Promise<URL> {
     "CARGO_TARGET_DIR=/target",
     "-w",
     "/work/native/rde-events",
-    "rust:1-bookworm",
+    "rde-events-linux",
     "sh",
     "-c",
     `cargo build --release && cp /target/release/librde_events.so /work/native/prebuilt/${destName}`,

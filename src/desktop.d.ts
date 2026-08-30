@@ -10,7 +10,10 @@ declare global {
         height?: number;
         resizable?: boolean;
       });
-      getNativeWindow(): UnsafeWindowSurface;
+      getNativeWindow(): UnsafeWindowSurface & {
+        windowHandle?: Deno.PointerValue;
+        displayHandle?: Deno.PointerValue;
+      };
       getSize(): [number, number];
       close(): void;
     }

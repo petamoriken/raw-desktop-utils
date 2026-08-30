@@ -8,9 +8,10 @@ and the rest of the UI Events model are missing or unusable. This library reads
 the OS pointer (and queued click / wheel / key events) through FFI and
 synthesizes the same event shapes a browser would dispatch.
 
-macOS (AppKit) and Linux (X11) are implemented. Windows still uses the stub in
-`native/rde-events/src/stub.rs`. Linux `.so` files are built with Docker when
-the host is not Linux (`deno task build:native:linux`).
+macOS (AppKit) and Linux (X11, or Wayland when `WAYLAND_DISPLAY` is set) are
+implemented. Windows still uses the stub in `native/rde-events/src/stub.rs`.
+Linux `.so` files are built with Docker when the host is not Linux
+(`deno task build:native:linux`).
 
 ## Install
 
@@ -64,14 +65,15 @@ incomplete mouse events; mixing the two sources can double-fire clicks.
 
 `attach` options:
 
-| Option            | Meaning                                                                                      |
-| ----------------- | -------------------------------------------------------------------------------------------- |
-| `title`           | Locate the native content view by window title (required on macOS unless you pass `native`). |
-| `native`          | Existing `NSView*` / `HWND` / etc.                                                           |
-| `target`          | Extra `EventTarget` that also receives copies of each event.                                 |
-| `mouseEvents`     | Also fire `mousedown` / `click` / `contextmenu` (default `true`).                            |
-| `autoPoll`        | Interval in ms; omit to poll yourself.                                                       |
-| `locateTimeoutMs` | How long to wait for the window to appear (default 500).                                     |
+| Option            | Meaning                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `title`           | Locate the native content view by window title (required on macOS unless you pass `native`). Title search is X11-only on Linux. |
+| `native`          | Existing `NSView*` / `HWND` / X11 window / `wl_surface*`.                                                                       |
+| `display`         | Wayland `wl_display*` (`getNativeWindow().displayHandle`). Optional if the surface can yield it.                                |
+| `target`          | Extra `EventTarget` that also receives copies of each event.                                                                    |
+| `mouseEvents`     | Also fire `mousedown` / `click` / `contextmenu` (default `true`).                                                               |
+| `autoPoll`        | Interval in ms; omit to poll yourself.                                                                                          |
+| `locateTimeoutMs` | How long to wait for the window to appear (default 500).                                                                        |
 
 Coordinates use a **top-left** origin in logical (point) pixels of the content
 view. That matches CSS `clientX` / `clientY`. On macOS the helper stays in
@@ -94,9 +96,9 @@ inspect internals stay private.
 
 ## Native ABI
 
-The helper is a Rust `cdylib` (`native/rde-events`). macOS is implemented;
-Windows and Linux export the same C symbols as stubs so they can be filled in on
-those machines.
+The helper is a Rust `cdylib` (`native/rde-events`). macOS is AppKit. Linux is
+X11 or Wayland (same `WAYLAND_DISPLAY` rule as laufey_winit). Windows still
+exports the same C symbols as a stub.
 
 ```sh
 deno task build:native

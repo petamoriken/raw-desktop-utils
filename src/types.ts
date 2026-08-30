@@ -96,8 +96,10 @@ export type DesktopWindow = EventTarget & {
 export type AttachOptions = {
   /** Window title used to locate the native content view. */
   title?: string;
-  /** Existing native view/window pointer, if already known. */
+  /** Existing native view / `wl_surface*` / X11 window, if already known. */
   native?: Deno.PointerValue;
+  /** Wayland `wl_display*` (`getNativeWindow().displayHandle`). Optional. */
+  display?: Deno.PointerValue;
   /** Extra target that also receives synthesized events. */
   target?: EventTarget;
   /** Also fire compatibility mouse events. Default true. */

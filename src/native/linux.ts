@@ -9,7 +9,14 @@ import { ABI_VERSION, QUEUED_EVENT_BYTES, SNAPSHOT_BYTES } from "./abi.ts";
 import type { NativeBackend } from "./backend.ts";
 import { decodeQueuedEvents, decodeSnapshot } from "./decode.ts";
 import { materializeLibrary } from "./load.ts";
-import { RDE_SYMBOLS, type RdeLibrary } from "./symbols.ts";
+import { RDE_SYMBOLS } from "./symbols.ts";
+
+const LINUX_SYMBOLS = {
+  ...RDE_SYMBOLS,
+  rde_set_display: { parameters: ["pointer"], result: "i32" },
+} as const;
+
+type LinuxLibrary = Deno.DynamicLibrary<typeof LINUX_SYMBOLS>;
 
 function cstr(text: string): Uint8Array {
   return new TextEncoder().encode(`${text}\0`);
@@ -17,9 +24,9 @@ function cstr(text: string): Uint8Array {
 
 export class LinuxBackend implements NativeBackend {
   readonly os = "linux";
-  readonly #dl: RdeLibrary;
+  readonly #dl: LinuxLibrary;
 
-  constructor(dl: RdeLibrary) {
+  constructor(dl: LinuxLibrary) {
     this.#dl = dl;
   }
 
@@ -35,7 +42,8 @@ export class LinuxBackend implements NativeBackend {
     return this.#dl.symbols.rde_find_front_window();
   }
 
-  attach(handle: Deno.PointerValue): boolean {
+  attach(handle: Deno.PointerValue, display?: Deno.PointerValue): boolean {
+    if (display) this.#dl.symbols.rde_set_display(display);
     return this.#dl.symbols.rde_attach(handle) === 1;
   }
 
@@ -69,7 +77,7 @@ export class LinuxBackend implements NativeBackend {
 
 export async function loadLinux(): Promise<LinuxBackend> {
   const path = await materializePrebuilt();
-  const dl = Deno.dlopen(path, RDE_SYMBOLS);
+  const dl = Deno.dlopen(path, LINUX_SYMBOLS);
   const backend = new LinuxBackend(dl);
   if (backend.abiVersion !== ABI_VERSION) {
     dl.close();

@@ -178,14 +178,17 @@ export async function attachWith(
   win: DesktopWindow,
   options: AttachOptions = {},
 ): Promise<InputSession> {
-  const handle = options.native ?? await locateHandle(native, options);
+  const handles = extractNativeHandles(win);
+  const handle = options.native ?? handles.window ??
+    await locateHandle(native, options);
+  const display = options.display ?? handles.display;
   if (!handle) {
     const hint = options.title
       ? ` (title=${JSON.stringify(options.title)})`
       : "";
     throw new Error(`raw-desktop-events: native window not found${hint}`);
   }
-  if (!native.attach(handle)) {
+  if (!native.attach(handle, display)) {
     throw new Error(
       "raw-desktop-events: failed to attach to the native window",
     );
@@ -209,4 +212,28 @@ async function locateHandle(
   }
   if (options.title) return native.findFrontWindow();
   return null;
+}
+
+function extractNativeHandles(win: DesktopWindow): {
+  window: Deno.PointerValue;
+  display: Deno.PointerValue;
+} {
+  const candidate = win as DesktopWindow & {
+    getNativeWindow?: () => {
+      windowHandle?: Deno.PointerValue;
+      displayHandle?: Deno.PointerValue;
+    };
+  };
+  if (typeof candidate.getNativeWindow !== "function") {
+    return { window: null, display: null };
+  }
+  try {
+    const surface = candidate.getNativeWindow();
+    return {
+      window: surface.windowHandle ?? null,
+      display: surface.displayHandle ?? null,
+    };
+  } catch {
+    return { window: null, display: null };
+  }
 }

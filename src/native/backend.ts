@@ -5,7 +5,7 @@ export type NativeBackend = {
   readonly os: string;
   findWindow(title: string): Deno.PointerValue;
   findFrontWindow(): Deno.PointerValue;
-  attach(handle: Deno.PointerValue): boolean;
+  attach(handle: Deno.PointerValue, display?: Deno.PointerValue): boolean;
   detach(handle: Deno.PointerValue): void;
   snapshot(handle: Deno.PointerValue): PointerSnapshot;
   pollEvents(handle: Deno.PointerValue, cap?: number): NativeQueuedEvent[];

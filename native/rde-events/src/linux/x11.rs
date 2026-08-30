@@ -1,7 +1,4 @@
 //! X11 backend. Coordinates are already top-left (unlike AppKit).
-//!
-//! Wayland is not implemented; Deno desktop raw windows may be X11 or
-//! Wayland depending on the compositor.
 
 use std::collections::VecDeque;
 use std::ffi::{c_char, c_void, CStr};
@@ -16,7 +13,7 @@ use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
 
 use crate::abi::{
-    QueuedEvent, Snapshot, ABI_VERSION, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN, EV_POINTER_UP,
+    QueuedEvent, Snapshot, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN, EV_POINTER_UP,
     EV_WHEEL, FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CTRL, MOD_META,
     MOD_SHIFT, PTR_MOUSE, QUEUE_CAP,
 };
@@ -256,13 +253,7 @@ fn drain_events(state: &mut State) {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn rde_abi_version() -> i32 {
-    ABI_VERSION
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn rde_find_window(utf8_title: *const c_char) -> *mut c_void {
+pub(crate) unsafe fn find_window(utf8_title: *const c_char) -> *mut c_void {
     if utf8_title.is_null() {
         return ptr::null_mut();
     }
@@ -281,8 +272,7 @@ pub unsafe extern "C" fn rde_find_window(utf8_title: *const c_char) -> *mut c_vo
     }
 }
 
-#[no_mangle]
-pub extern "C" fn rde_find_front_window() -> *mut c_void {
+pub(crate) fn find_front_window() -> *mut c_void {
     let mut state = STATE.lock().expect("rde state");
     if connect(&mut state).is_none() {
         return ptr::null_mut();
@@ -295,8 +285,7 @@ pub extern "C" fn rde_find_front_window() -> *mut c_void {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn rde_attach(view_ptr: *mut c_void) -> i32 {
+pub(crate) fn attach(view_ptr: *mut c_void) -> i32 {
     let Some(win) = window_from_ptr(view_ptr) else {
         return 0;
     };
@@ -325,8 +314,7 @@ pub extern "C" fn rde_attach(view_ptr: *mut c_void) -> i32 {
     1
 }
 
-#[no_mangle]
-pub extern "C" fn rde_detach(view_ptr: *mut c_void) {
+pub(crate) fn detach(view_ptr: *mut c_void) {
     let mut state = STATE.lock().expect("rde state");
     if state.attached == window_from_ptr(view_ptr) || view_ptr.is_null() {
         state.attached = None;
@@ -334,8 +322,7 @@ pub extern "C" fn rde_detach(view_ptr: *mut c_void) {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 {
+pub(crate) unsafe fn snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 {
     if out.is_null() {
         return 0;
     }
@@ -400,8 +387,7 @@ pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
     1
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn rde_poll_events(
+pub(crate) unsafe fn poll_events(
     _view_ptr: *mut c_void,
     buf: *mut QueuedEvent,
     cap: i32,
