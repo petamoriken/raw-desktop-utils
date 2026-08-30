@@ -27,7 +27,7 @@
     "include": [
       "mod.ts",
       "src/**/*.ts",
-      "native/**",
+      "native/prebuilt/**",
       "tools/build.ts",
       "README.md",
       "LICENSE",
