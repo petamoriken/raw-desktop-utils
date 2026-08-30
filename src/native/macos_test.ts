@@ -1,0 +1,22 @@
+import { assertEquals } from "@std/assert";
+import { ABI_VERSION } from "./abi.ts";
+import { loadMacos } from "./macos.ts";
+
+Deno.test({
+  name: "macOS helper compiles, reports ABI 1, and misses unknown titles",
+  ignore: Deno.build.os !== "darwin",
+  permissions: {
+    read: true,
+    write: true,
+    run: true,
+    env: true,
+    ffi: true,
+  },
+  fn: async () => {
+    const native = await loadMacos();
+    assertEquals(native.abiVersion, ABI_VERSION);
+    assertEquals(native.findWindow("__rde_no_such_window__"), null);
+    const text = Deno.inspect(native);
+    assertEquals(text.includes("MacosBackend"), true);
+  },
+});
