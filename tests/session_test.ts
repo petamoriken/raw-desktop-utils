@@ -97,3 +97,64 @@ Deno.test("inspecting InputSession.prototype does not throw", () => {
   const text = Deno.inspect(InputSession.prototype);
   assertEquals(text.includes("InputSession"), true);
 });
+
+Deno.test("session exposes Window geometry and Screen from the snapshot", () => {
+  const backend = new FakeBackend([
+    snap({
+      viewWidth: 640,
+      viewHeight: 480,
+      devicePixelRatio: 2,
+      windowX: 12,
+      windowY: 34,
+      outerWidth: 640,
+      outerHeight: 502,
+      screenWidth: 1920,
+      screenHeight: 1080,
+      availLeft: 0,
+      availTop: 25,
+      availWidth: 1920,
+      availHeight: 1055,
+    }),
+  ]);
+  using session = new InputSession(
+    desktopWindow(),
+    backend,
+    Deno.UnsafePointer.of(new Uint8Array(1)),
+    {},
+  );
+  const seen: string[] = [];
+  session.screen.addEventListener("change", () => seen.push("change"));
+  session.poll();
+  assertEquals(session.devicePixelRatio, 2);
+  assertEquals(session.screenX, 12);
+  assertEquals(session.screenY, 34);
+  assertEquals(session.screenLeft, 12);
+  assertEquals(session.screenTop, 34);
+  assertEquals(session.innerWidth, 640);
+  assertEquals(session.innerHeight, 480);
+  assertEquals(session.outerWidth, 640);
+  assertEquals(session.outerHeight, 502);
+  assertEquals(session.screen instanceof EventTarget, true);
+  assertEquals(session.screen.width, 1920);
+  assertEquals(session.screen.height, 1080);
+  assertEquals(session.screen.availTop, 25);
+  assertEquals(session.screen.availHeight, 1055);
+  assertEquals(session.screen.colorDepth, 24);
+  assertEquals(seen, ["change"]);
+});
+
+Deno.test("session inner size falls back to window.getSize()", () => {
+  const backend = new FakeBackend([snap({ viewWidth: 0, viewHeight: 0 })]);
+  using session = new InputSession(
+    desktopWindow(),
+    backend,
+    Deno.UnsafePointer.of(new Uint8Array(1)),
+    {},
+  );
+  session.poll();
+  assertEquals(session.innerWidth, 100);
+  assertEquals(session.innerHeight, 80);
+  assertEquals(session.devicePixelRatio, 1);
+  assertEquals(session.outerWidth, 100);
+  assertEquals(session.outerHeight, 80);
+});

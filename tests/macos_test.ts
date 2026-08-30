@@ -3,7 +3,7 @@ import { ABI_VERSION } from "../src/native/abi.ts";
 import { loadMacos } from "../src/native/macos.ts";
 
 Deno.test({
-  name: "macOS prebuilt reports ABI 1 and misses unknown titles",
+  name: "macOS prebuilt reports the current ABI and misses unknown titles",
   ignore: Deno.build.os !== "darwin",
   permissions: {
     read: true,

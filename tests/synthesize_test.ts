@@ -1,6 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import { MouseEvent, PointerEvent, WheelEvent } from "../src/events.ts";
-import { synthesize } from "../src/synthesize.ts";
+import { snapshotEqual, synthesize } from "../src/synthesize.ts";
 import {
   BUTTONS_PRIMARY,
   BUTTONS_SECONDARY,
@@ -231,5 +231,20 @@ Deno.test("dblclick comes from clickCount 2", () => {
   assertEquals(
     events.some((e) => e instanceof MouseEvent && e.type === "dblclick"),
     true,
+  );
+});
+
+Deno.test("snapshotEqual uses Object.is so NaN matches NaN", () => {
+  assertEquals(
+    snapshotEqual(snap({ clientX: NaN }), snap({ clientX: NaN })),
+    true,
+  );
+  assertEquals(
+    snapshotEqual(snap({ clientX: 1 }), snap({ clientX: NaN })),
+    false,
+  );
+  assertEquals(
+    snapshotEqual(snap({ clientX: 0 }), snap({ clientX: -0 })),
+    false,
   );
 });

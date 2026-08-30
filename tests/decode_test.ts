@@ -12,24 +12,46 @@ Deno.test("snapshot decoder reads little-endian packed fields", () => {
   v.setFloat32(8, 40, true);
   v.setFloat32(12, 100, true);
   v.setFloat32(16, 200, true);
-  v.setFloat32(20, 800, true);
-  v.setFloat32(24, 600, true);
-  v.setUint32(28, 1, true);
-  v.setUint32(32, 1 | 8, true); // shift+meta
-  v.setFloat32(36, 0.5, true);
-  v.setFloat32(40, 10, true);
-  v.setFloat32(44, -5, true);
-  v.setFloat32(48, 15, true);
-  v.setUint32(52, 1, true); // pen
+  v.setUint32(20, 1, true);
+  v.setUint32(24, 1 | 8, true); // shift+meta
+  v.setFloat32(28, 0.5, true);
+  v.setFloat32(32, 10, true);
+  v.setFloat32(36, -5, true);
+  v.setFloat32(40, 15, true);
+  v.setUint32(44, 1, true); // pen
+  v.setFloat32(48, 2, true);
+  v.setFloat32(52, 10, true);
+  v.setFloat32(56, 20, true);
+  v.setFloat32(60, 800, true);
+  v.setFloat32(64, 600, true);
+  v.setFloat32(68, 820, true);
+  v.setFloat32(72, 640, true);
+  v.setFloat32(76, 1920, true);
+  v.setFloat32(80, 1080, true);
+  v.setFloat32(84, 0, true);
+  v.setFloat32(88, 25, true);
+  v.setFloat32(92, 1920, true);
+  v.setFloat32(96, 1055, true);
   const snap = decodeSnapshot(new Uint8Array(buf));
   assertEquals(snap.valid, true);
   assertEquals(snap.inside, true);
   assertEquals(snap.focused, true);
   assertEquals(snap.clientX, 12.5);
   assertEquals(snap.clientY, 40);
+  assertEquals(snap.viewWidth, 800);
+  assertEquals(snap.viewHeight, 600);
   assertEquals(snap.buttons, 1);
   assertEquals(snap.pointerType, "pen");
   assertEquals(snap.pressure, 0.5);
+  assertEquals(snap.devicePixelRatio, 2);
+  assertEquals(snap.windowX, 10);
+  assertEquals(snap.windowY, 20);
+  assertEquals(snap.outerWidth, 820);
+  assertEquals(snap.outerHeight, 640);
+  assertEquals(snap.screenWidth, 1920);
+  assertEquals(snap.screenHeight, 1080);
+  assertEquals(snap.availTop, 25);
+  assertEquals(snap.availHeight, 1055);
 });
 
 Deno.test("queued event decoder uses the supplied key translator", () => {

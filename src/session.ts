@@ -6,9 +6,22 @@ import type { InputSessionEventMap } from "./event_map.ts";
 import { cloneSynthesized, type SynthesizedEvent } from "./events.ts";
 import { inspectBranded, type InspectFn, kCustomInspect } from "./inspect.ts";
 import { loadNative, type NativeBackend } from "./native/mod.ts";
+import { createScreen, type Screen } from "./screen.ts";
 import { synthesize } from "./synthesize.ts";
-import type { AttachOptions, DesktopWindow, PointerSnapshot } from "./types.ts";
-import { emptySnapshot } from "./types.ts";
+import type {
+  AttachOptions,
+  DesktopWindow,
+  PointerSnapshot,
+  WindowMetrics,
+} from "./types.ts";
+import {
+  emptySnapshot,
+  screenMetricsFrom,
+  windowMetricsFrom,
+} from "./types.ts";
+
+export { Screen } from "./screen.ts";
+export type { ScreenEventMap, ScreenInit } from "./screen.ts";
 
 export type { FrameRequestCallback } from "./animation_frame.ts";
 
@@ -16,12 +29,14 @@ const DEFAULT_LOCATE_MS = 500;
 
 export class InputSession extends EventTarget {
   readonly window: DesktopWindow;
+  readonly #screen: Screen = createScreen();
   readonly #native: NativeBackend;
   readonly #handle: Deno.PointerValue;
   readonly #target: EventTarget | null;
   readonly #mouseEvents: boolean;
   #prev: PointerSnapshot | null = null;
   #last: PointerSnapshot = emptySnapshot();
+  #metrics: WindowMetrics | null = null;
   #closed = false;
   #timer: ReturnType<typeof setInterval> | null = null;
   #frames = new AnimationFrames();
@@ -51,10 +66,64 @@ export class InputSession extends EventTarget {
     return this.#last;
   }
 
+  /** CSSOM View `window.screen`. Updated by `poll()` / `metrics()` / `snapshot()`. */
+  get screen(): Screen {
+    return this.#screen;
+  }
+
+  /**
+   * Physical backing pixels per logical (`getSize` / `clientX`) pixel.
+   * Same role as `window.devicePixelRatio`.
+   */
+  get devicePixelRatio(): number {
+    return this.#currentMetrics().devicePixelRatio;
+  }
+
+  get screenX(): number {
+    return this.#currentMetrics().screenX;
+  }
+
+  get screenY(): number {
+    return this.#currentMetrics().screenY;
+  }
+
+  get screenLeft(): number {
+    return this.screenX;
+  }
+
+  get screenTop(): number {
+    return this.screenY;
+  }
+
+  get innerWidth(): number {
+    return this.#currentMetrics().innerWidth;
+  }
+
+  get innerHeight(): number {
+    return this.#currentMetrics().innerHeight;
+  }
+
+  get outerWidth(): number {
+    return this.#currentMetrics().outerWidth;
+  }
+
+  get outerHeight(): number {
+    return this.#currentMetrics().outerHeight;
+  }
+
+  /** Live `Window` geometry. Also refreshes {@linkcode Screen}. */
+  metrics(): WindowMetrics {
+    this.#assertOpen();
+    const snap = this.#native.snapshot(this.#handle);
+    return this.#remember(snap);
+  }
+
   /** Read the current OS pointer sample without synthesizing events. */
   snapshot(): PointerSnapshot {
     this.#assertOpen();
-    return this.#native.snapshot(this.#handle);
+    const next = this.#native.snapshot(this.#handle);
+    this.#remember(next);
+    return next;
   }
 
   /**
@@ -71,6 +140,7 @@ export class InputSession extends EventTarget {
     });
     this.#prev = next;
     this.#last = next;
+    this.#remember(next);
     this.#emit(events);
     return next;
   }
@@ -135,6 +205,20 @@ export class InputSession extends EventTarget {
     super.removeEventListener(type, listener, options);
   }
 
+  #currentMetrics(): WindowMetrics {
+    this.#assertOpen();
+    return this.#metrics ?? this.metrics();
+  }
+
+  #remember(snap: PointerSnapshot): WindowMetrics {
+    const next = windowMetricsFrom(snap, this.window.getSize());
+    this.#metrics = next;
+    if (this.#screen.replace(screenMetricsFrom(snap))) {
+      this.#screen.dispatchEvent(new Event("change"));
+    }
+    return next;
+  }
+
   #assertOpen(): void {
     if (this.#closed) {
       throw new Error("raw-desktop-utils: InputSession is closed");
@@ -161,6 +245,9 @@ export class InputSession extends EventTarget {
         clientX: this.#last.clientX,
         clientY: this.#last.clientY,
         buttons: this.#last.buttons,
+        devicePixelRatio: this.#metrics?.devicePixelRatio ?? 1,
+        innerWidth: this.#metrics?.innerWidth ?? 0,
+        innerHeight: this.#metrics?.innerHeight ?? 0,
         autoPoll: this.#timer !== null,
       }),
       inspect,

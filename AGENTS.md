@@ -25,9 +25,11 @@ take `--allow-run`.
 ## Architecture
 
 - Public surface (`mod.ts`, `src/platforms/*`) is browser-shaped: `attach`,
-  `InputSession`, DOM event classes. `requestAnimationFrame` /
-  `cancelAnimationFrame` live on the session `attach` returns. Do not export key
-  tables, inspect symbols, or native internals.
+  `InputSession`, `Screen`, DOM event classes. `requestAnimationFrame` /
+  `cancelAnimationFrame` live on the session `attach` returns, along with
+  `devicePixelRatio`, `screenX` / `screenY`, `innerWidth` / `innerHeight`,
+  `outerWidth` / `outerHeight`, and `screen`. Do not export key tables, inspect
+  symbols, or native internals.
 - `InputSession.poll()` diffs a native snapshot plus a queued event list into
   Pointer / Mouse / Wheel / Keyboard events. Listeners go on the **session**,
   not `BrowserWindow` (that source can double-fire).

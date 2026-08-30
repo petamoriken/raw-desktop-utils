@@ -41,6 +41,21 @@ export type PointerSnapshot = {
   screenY: number;
   viewWidth: number;
   viewHeight: number;
+  /** Physical backing pixels per logical (`getSize` / `clientX`) pixel. */
+  devicePixelRatio: number;
+  /** Outer window origin in top-left screen space (`Window.screenX`). */
+  windowX: number;
+  windowY: number;
+  /** Outer window size including chrome (`Window.outerWidth`). */
+  outerWidth: number;
+  outerHeight: number;
+  /** Monitor that contains the window (`Screen.width` / `height`). */
+  screenWidth: number;
+  screenHeight: number;
+  availLeft: number;
+  availTop: number;
+  availWidth: number;
+  availHeight: number;
   buttons: number;
   modifiers: number;
   pressure: number;
@@ -87,6 +102,27 @@ export type NativeQueuedEvent = {
   key: string;
   code: string;
   repeat: boolean;
+};
+
+/** HTML `Window` geometry in the same logical space as `getSize()`. */
+export type WindowMetrics = {
+  devicePixelRatio: number;
+  screenX: number;
+  screenY: number;
+  innerWidth: number;
+  innerHeight: number;
+  outerWidth: number;
+  outerHeight: number;
+};
+
+/** CSSOM View `Screen` geometry in the same logical space as `getSize()`. */
+export type ScreenMetrics = {
+  width: number;
+  height: number;
+  availLeft: number;
+  availTop: number;
+  availWidth: number;
+  availHeight: number;
 };
 
 export type DesktopWindow = EventTarget & {
@@ -153,6 +189,17 @@ export function emptySnapshot(): PointerSnapshot {
     screenY: 0,
     viewWidth: 0,
     viewHeight: 0,
+    devicePixelRatio: 0,
+    windowX: 0,
+    windowY: 0,
+    outerWidth: 0,
+    outerHeight: 0,
+    screenWidth: 0,
+    screenHeight: 0,
+    availLeft: 0,
+    availTop: 0,
+    availWidth: 0,
+    availHeight: 0,
     buttons: 0,
     modifiers: 0,
     pressure: 0,
@@ -160,6 +207,49 @@ export function emptySnapshot(): PointerSnapshot {
     tiltY: 0,
     twist: 0,
     pointerType: POINTER_TYPE_MOUSE,
+  };
+}
+
+export function emptyMetrics(): WindowMetrics {
+  return {
+    devicePixelRatio: 1,
+    screenX: 0,
+    screenY: 0,
+    innerWidth: 0,
+    innerHeight: 0,
+    outerWidth: 0,
+    outerHeight: 0,
+  };
+}
+
+/** Merge a native sample with `window.getSize()` when the helper omitted size. */
+export function windowMetricsFrom(
+  snap: PointerSnapshot,
+  size: readonly [number, number],
+): WindowMetrics {
+  const innerWidth = snap.viewWidth > 0 ? snap.viewWidth : size[0];
+  const innerHeight = snap.viewHeight > 0 ? snap.viewHeight : size[1];
+  return {
+    devicePixelRatio: snap.devicePixelRatio > 0 ? snap.devicePixelRatio : 1,
+    screenX: snap.windowX,
+    screenY: snap.windowY,
+    innerWidth,
+    innerHeight,
+    outerWidth: snap.outerWidth > 0 ? snap.outerWidth : innerWidth,
+    outerHeight: snap.outerHeight > 0 ? snap.outerHeight : innerHeight,
+  };
+}
+
+export function screenMetricsFrom(snap: PointerSnapshot): ScreenMetrics {
+  const width = snap.screenWidth;
+  const height = snap.screenHeight;
+  return {
+    width,
+    height,
+    availLeft: snap.availLeft,
+    availTop: snap.availTop,
+    availWidth: snap.availWidth > 0 ? snap.availWidth : width,
+    availHeight: snap.availHeight > 0 ? snap.availHeight : height,
   };
 }
 

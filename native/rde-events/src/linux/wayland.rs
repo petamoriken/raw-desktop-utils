@@ -467,8 +467,6 @@ pub(crate) unsafe fn snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 
             client_y: wl.input.y as f32,
             screen_x: wl.input.x as f32,
             screen_y: wl.input.y as f32,
-            view_w: 0.0,
-            view_h: 0.0,
             buttons: wl.input.buttons,
             modifiers: wl.input.modifiers,
             pressure: if wl.input.buttons != 0 { 0.5 } else { 0.0 },
@@ -476,6 +474,21 @@ pub(crate) unsafe fn snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 
             tilt_y: 0.0,
             twist: 0.0,
             pointer_type: PTR_MOUSE,
+            // Wayland cannot see global position or another client's size.
+            // The session falls back to `getSize()`; ratio stays 1.
+            device_pixel_ratio: 1.0,
+            window_x: 0.0,
+            window_y: 0.0,
+            inner_w: 0.0,
+            inner_h: 0.0,
+            outer_w: 0.0,
+            outer_h: 0.0,
+            screen_w: 0.0,
+            screen_h: 0.0,
+            avail_x: 0.0,
+            avail_y: 0.0,
+            avail_w: 0.0,
+            avail_h: 0.0,
         };
     }
     1

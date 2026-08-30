@@ -3,7 +3,7 @@ import { ABI_VERSION } from "../src/native/abi.ts";
 import { loadWindows } from "../src/native/windows.ts";
 
 Deno.test({
-  name: "Windows prebuilt reports ABI 1 and misses unknown titles",
+  name: "Windows prebuilt reports the current ABI and misses unknown titles",
   ignore: Deno.build.os !== "windows" || Deno.build.arch !== "x86_64",
   permissions: {
     read: true,

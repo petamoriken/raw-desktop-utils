@@ -13,7 +13,7 @@ use x11rb::protocol::Event;
 use x11rb::rust_connection::RustConnection;
 
 use crate::abi::{
-    QueuedEvent, Snapshot, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN, EV_POINTER_UP,
+    Chrome, QueuedEvent, Snapshot, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN, EV_POINTER_UP,
     EV_WHEEL, FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CTRL, MOD_META,
     MOD_SHIFT, PTR_MOUSE, QUEUE_CAP,
 };
@@ -130,6 +130,87 @@ fn find_title(conn: &RustConnection, win: Window, want: &str) -> Option<Window> 
         }
     }
     None
+}
+
+fn frame_extents(conn: &RustConnection, win: Window) -> (u32, u32, u32, u32) {
+    let Ok(atom) = conn.intern_atom(false, b"_NET_FRAME_EXTENTS") else {
+        return (0, 0, 0, 0);
+    };
+    let Ok(atom) = atom.reply() else {
+        return (0, 0, 0, 0);
+    };
+    let Ok(cookie) = conn.get_property(false, win, atom.atom, AtomEnum::CARDINAL, 0, 4) else {
+        return (0, 0, 0, 0);
+    };
+    let Ok(reply) = cookie.reply() else {
+        return (0, 0, 0, 0);
+    };
+    let Some(values) = reply.value32() else {
+        return (0, 0, 0, 0);
+    };
+    let vals: Vec<u32> = values.collect();
+    if vals.len() >= 4 {
+        (vals[0], vals[1], vals[2], vals[3])
+    } else {
+        (0, 0, 0, 0)
+    }
+}
+
+fn work_area(conn: &RustConnection, root: Window) -> Option<(i32, i32, u32, u32)> {
+    let atom = conn.intern_atom(false, b"_NET_WORKAREA").ok()?.reply().ok()?.atom;
+    let reply = conn
+        .get_property(false, root, atom, AtomEnum::CARDINAL, 0, 4)
+        .ok()?
+        .reply()
+        .ok()?;
+    let vals: Vec<u32> = reply.value32()?.collect();
+    if vals.len() >= 4 {
+        Some((vals[0] as i32, vals[1] as i32, vals[2], vals[3]))
+    } else {
+        None
+    }
+}
+
+/// `devicePixelRatio` is 1: X11 client geometry is already the same space as
+/// `getSize()`. `screenX` / `outer*` use `_NET_FRAME_EXTENTS` when present.
+fn window_chrome(
+    conn: &RustConnection,
+    win: Window,
+    root: Window,
+    view_w: f32,
+    view_h: f32,
+) -> Chrome {
+    let (left, right, top, bottom) = frame_extents(conn, win);
+    let mut chrome = Chrome {
+        device_pixel_ratio: 1.0,
+        outer_w: view_w,
+        outer_h: view_h,
+        ..Chrome::empty()
+    };
+    if let Ok(cookie) = conn.translate_coordinates(win, root, 0, 0) {
+        if let Ok(tr) = cookie.reply() {
+            chrome.window_x = tr.dst_x as f32 - left as f32;
+            chrome.window_y = tr.dst_y as f32 - top as f32;
+            chrome.outer_w = view_w + left as f32 + right as f32;
+            chrome.outer_h = view_h + top as f32 + bottom as f32;
+        }
+    }
+    if let Ok(cookie) = conn.get_geometry(root) {
+        if let Ok(geom) = cookie.reply() {
+            chrome.screen_w = geom.width as f32;
+            chrome.screen_h = geom.height as f32;
+        }
+    }
+    if let Some((x, y, w, h)) = work_area(conn, root) {
+        chrome.avail_x = x as f32;
+        chrome.avail_y = y as f32;
+        chrome.avail_w = w as f32;
+        chrome.avail_h = h as f32;
+    } else {
+        chrome.avail_w = chrome.screen_w;
+        chrome.avail_h = chrome.screen_h;
+    }
+    chrome
 }
 
 fn active_window(conn: &RustConnection, root: Window) -> Option<Window> {
@@ -363,7 +444,9 @@ pub(crate) unsafe fn snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 
         && (pointer.win_x as u16) < geom.width
         && (pointer.win_y as u16) < geom.height;
     let mask = KeyButMask::from(pointer.mask);
-    let snap = Snapshot {
+    let view_w = geom.width as f32;
+    let view_h = geom.height as f32;
+    let mut snap = Snapshot {
         flags: FLAG_VALID
             | if inside { FLAG_INSIDE } else { 0 }
             | if focused { FLAG_FOCUSED } else { 0 },
@@ -371,8 +454,6 @@ pub(crate) unsafe fn snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 
         client_y: pointer.win_y as f32,
         screen_x: pointer.root_x as f32,
         screen_y: pointer.root_y as f32,
-        view_w: geom.width as f32,
-        view_h: geom.height as f32,
         buttons: buttons_from_mask(mask),
         modifiers: modifiers(mask),
         pressure: if buttons_from_mask(mask) != 0 { 0.5 } else { 0.0 },
@@ -380,7 +461,11 @@ pub(crate) unsafe fn snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 
         tilt_y: 0.0,
         twist: 0.0,
         pointer_type: PTR_MOUSE,
+        ..Snapshot::empty()
     };
+    snap.inner_w = view_w;
+    snap.inner_h = view_h;
+    snap.apply_chrome(window_chrome(conn, win, state.root, view_w, view_h));
     unsafe {
         *out = snap;
     }

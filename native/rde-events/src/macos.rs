@@ -17,9 +17,9 @@ use objc2_app_kit::{
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString, NSThread};
 
 use crate::abi::{
-    QueuedEvent, Snapshot, ABI_VERSION, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN, EV_POINTER_UP,
-    EV_WHEEL, FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CTRL, MOD_META,
-    MOD_SHIFT, PTR_MOUSE, PTR_PEN, QUEUE_CAP,
+    Chrome, QueuedEvent, Snapshot, ABI_VERSION, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN,
+    EV_POINTER_UP, EV_WHEEL, FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CTRL,
+    MOD_META, MOD_SHIFT, PTR_MOUSE, PTR_PEN, QUEUE_CAP,
 };
 
 struct Queue {
@@ -183,6 +183,40 @@ struct Mapped {
     view_w: f32,
     view_h: f32,
     inside: bool,
+}
+
+/// `Window` / `Screen` geometry in top-left logical points.
+fn window_chrome(view: &NSView, mtm: MainThreadMarker, view_w: f32, view_h: f32) -> Chrome {
+    let Some(window) = view.window() else {
+        return Chrome {
+            device_pixel_ratio: 1.0,
+            outer_w: view_w,
+            outer_h: view_h,
+            ..Chrome::empty()
+        };
+    };
+    let scale = window.backingScaleFactor() as f32;
+    let frame = window.frame();
+    let desktop = desktop_frame(mtm);
+    let mut chrome = Chrome {
+        device_pixel_ratio: if scale > 0.0 { scale } else { 1.0 },
+        window_x: frame.origin.x as f32,
+        window_y: (desktop.max().y - frame.max().y) as f32,
+        outer_w: frame.size.width as f32,
+        outer_h: frame.size.height as f32,
+        ..Chrome::empty()
+    };
+    if let Some(ns_screen) = window.screen() {
+        let sf = ns_screen.frame();
+        let vis = ns_screen.visibleFrame();
+        chrome.screen_w = sf.size.width as f32;
+        chrome.screen_h = sf.size.height as f32;
+        chrome.avail_x = vis.origin.x as f32;
+        chrome.avail_y = (desktop.max().y - vis.max().y) as f32;
+        chrome.avail_w = vis.size.width as f32;
+        chrome.avail_h = vis.size.height as f32;
+    }
+    chrome
 }
 
 fn map_screen(
@@ -486,7 +520,7 @@ pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
             return;
         };
         let tablet = STATE.lock().expect("rde state").tablet;
-        let snap = Snapshot {
+        let mut snap = Snapshot {
             flags: FLAG_VALID
                 | if mapped.inside { FLAG_INSIDE } else { 0 }
                 | if view.window().is_some_and(|w| w.isKeyWindow()) {
@@ -498,8 +532,6 @@ pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
             client_y: mapped.client_y,
             screen_x: mapped.screen_x,
             screen_y: mapped.screen_y,
-            view_w: mapped.view_w,
-            view_h: mapped.view_h,
             buttons: dom_buttons(NSEvent::pressedMouseButtons()),
             modifiers: modifiers(NSEvent::modifierFlags_class()),
             pressure: tablet.pressure,
@@ -507,7 +539,11 @@ pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
             tilt_y: tablet.tilt_y,
             twist: tablet.twist,
             pointer_type: tablet.pointer_type,
+            ..Snapshot::empty()
         };
+        snap.inner_w = mapped.view_w;
+        snap.inner_h = mapped.view_h;
+        snap.apply_chrome(window_chrome(&view, mtm, mapped.view_w, mapped.view_h));
         unsafe {
             *out = snap;
         }

@@ -60,7 +60,11 @@ input.requestAnimationFrame(frame);
 `addEventListener` is typed like the DOM: `"pointermove"` gives a
 `PointerEvent`, `"wheel"` a `WheelEvent`, `"keydown"` a `KeyboardEvent`.
 `input.requestAnimationFrame` / `input.cancelAnimationFrame` match the HTML
-`Window` methods.
+`Window` methods. The session also exposes the same geometry as a `Window`:
+`devicePixelRatio`, `screenX` / `screenY` (`screenLeft` / `screenTop`),
+`innerWidth` / `innerHeight`, `outerWidth` / `outerHeight`, and `input.screen`
+(`Screen extends EventTarget`). `screen` fires `change` when the monitor work
+area changes between polls.
 
 `attach` options:
 
@@ -76,11 +80,12 @@ input.requestAnimationFrame(frame);
 
 Coordinates use a **top-left** origin in logical (point) pixels of the content
 view, the same space as `window.getSize()`. That matches CSS `clientX` /
-`clientY`. On macOS the helper stays in screen space and flips Y; it does not
-call `convertPoint` / `isFlipped` on winit views, which invert hit tests. On
-Windows client pixels are reported unscaled, because `deno desktop` sizes a
-`BrowserWindow` in device pixels (a 640x480 window stays 640x480 physical at
-150% scale).
+`clientY`. `devicePixelRatio` is the physical backing size of that space (Retina
+`2`, Windows unscaled `1`). On macOS the helper stays in screen space and flips
+Y; it does not call `convertPoint` / `isFlipped` on winit views, which invert
+hit tests. On Windows client pixels are reported unscaled, because
+`deno desktop` sizes a `BrowserWindow` in device pixels (a 640x480 window stays
+640x480 physical at 150% scale).
 
 ## Events
 
@@ -92,9 +97,9 @@ From a live snapshot plus the native queue:
 - `wheel`
 - `keydown` / `keyup`
 
-The public exports are `attach`, `InputSession`, and the DOM constructors
-(`PointerEvent`, `MouseEvent`, `WheelEvent`, `KeyboardEvent`, `UIEvent`).
-Platform key tables and inspect internals stay private.
+The public exports are `attach`, `InputSession`, `Screen`, and the DOM
+constructors (`PointerEvent`, `MouseEvent`, `WheelEvent`, `KeyboardEvent`,
+`UIEvent`). Platform key tables and inspect internals stay private.
 
 ## Native ABI
 

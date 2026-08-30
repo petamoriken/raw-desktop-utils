@@ -19,6 +19,7 @@ export function decodeSnapshot(buf: Uint8Array): PointerSnapshot {
   if (buf.byteLength < SNAPSHOT_BYTES) return emptySnapshot();
   const v = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   const flags = v.getUint32(0, true);
+  // Offsets match `abi.rs` Snapshot: pointer, then window, then screen.
   return {
     valid: (flags & FLAG_VALID) !== 0,
     inside: (flags & FLAG_INSIDE) !== 0,
@@ -27,15 +28,26 @@ export function decodeSnapshot(buf: Uint8Array): PointerSnapshot {
     clientY: v.getFloat32(8, true),
     screenX: v.getFloat32(12, true),
     screenY: v.getFloat32(16, true),
-    viewWidth: v.getFloat32(20, true),
-    viewHeight: v.getFloat32(24, true),
-    buttons: v.getUint32(28, true),
-    modifiers: v.getUint32(32, true),
-    pressure: v.getFloat32(36, true),
-    tiltX: v.getFloat32(40, true),
-    tiltY: v.getFloat32(44, true),
-    twist: v.getFloat32(48, true),
-    pointerType: pointerTypeFromNative(v.getUint32(52, true)),
+    buttons: v.getUint32(20, true),
+    modifiers: v.getUint32(24, true),
+    pressure: v.getFloat32(28, true),
+    tiltX: v.getFloat32(32, true),
+    tiltY: v.getFloat32(36, true),
+    twist: v.getFloat32(40, true),
+    pointerType: pointerTypeFromNative(v.getUint32(44, true)),
+    devicePixelRatio: v.getFloat32(48, true),
+    windowX: v.getFloat32(52, true),
+    windowY: v.getFloat32(56, true),
+    viewWidth: v.getFloat32(60, true),
+    viewHeight: v.getFloat32(64, true),
+    outerWidth: v.getFloat32(68, true),
+    outerHeight: v.getFloat32(72, true),
+    screenWidth: v.getFloat32(76, true),
+    screenHeight: v.getFloat32(80, true),
+    availLeft: v.getFloat32(84, true),
+    availTop: v.getFloat32(88, true),
+    availWidth: v.getFloat32(92, true),
+    availHeight: v.getFloat32(96, true),
   };
 }
 

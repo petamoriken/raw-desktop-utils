@@ -15,7 +15,10 @@ use std::ptr;
 use std::sync::Mutex;
 
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-use windows_sys::Win32::Graphics::Gdi::{ClientToScreen, ScreenToClient};
+use windows_sys::Win32::Graphics::Gdi::{
+    ClientToScreen, GetMonitorInfoW, MonitorFromWindow, ScreenToClient, MONITORINFO,
+    MONITOR_DEFAULTTONEAREST,
+};
 use windows_sys::Win32::System::SystemServices::{
     MK_CONTROL, MK_LBUTTON, MK_MBUTTON, MK_RBUTTON, MK_SHIFT, MK_XBUTTON1, MK_XBUTTON2,
 };
@@ -28,8 +31,9 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, EnumWindows, GetAncestor, GetClientRect, GetCursorPos, GetForegroundWindow,
-    GetMessageExtraInfo, GetSystemMetrics, GetWindowTextW, GetWindowThreadProcessId, IsChild,
-    IsWindow, IsWindowVisible, SetWindowsHookExW, UnhookWindowsHookEx, WindowFromPoint, GA_ROOT,
+    GetMessageExtraInfo, GetSystemMetrics, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
+    IsChild, IsWindow, IsWindowVisible, SetWindowsHookExW, UnhookWindowsHookEx, WindowFromPoint,
+    GA_ROOT,
     HHOOK, MSG, PM_REMOVE, SM_SWAPBUTTON, WHEEL_DELTA, WH_GETMESSAGE, WM_KEYDOWN, WM_KEYUP,
     WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK, WM_MBUTTONDOWN,
     WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEWHEEL, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP,
@@ -37,9 +41,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::abi::{
-    QueuedEvent, Snapshot, ABI_VERSION, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN, EV_POINTER_UP,
-    EV_WHEEL, FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CTRL, MOD_META,
-    MOD_SHIFT, PTR_MOUSE, PTR_PEN, QUEUE_CAP,
+    Chrome, QueuedEvent, Snapshot, ABI_VERSION, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN,
+    EV_POINTER_UP, EV_WHEEL, FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CTRL,
+    MOD_META, MOD_SHIFT, PTR_MOUSE, PTR_PEN, QUEUE_CAP,
 };
 
 /// One wheel notch in CSS pixels. Same value the X11 backend reports.
@@ -223,6 +227,65 @@ struct Mapped {
     client_y: f32,
     screen_x: f32,
     screen_y: f32,
+}
+
+/// Outer chrome plus the nearest monitor. `devicePixelRatio` is 1:
+/// `GetClientRect` and `getSize()` are already unscaled device pixels.
+fn window_chrome(hwnd: HWND, view_w: f32, view_h: f32) -> Chrome {
+    let root = unsafe {
+        let ancestor = GetAncestor(hwnd, GA_ROOT);
+        if ancestor.is_null() {
+            hwnd
+        } else {
+            ancestor
+        }
+    };
+    let mut chrome = Chrome {
+        device_pixel_ratio: 1.0,
+        outer_w: view_w,
+        outer_h: view_h,
+        ..Chrome::empty()
+    };
+    let mut frame = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    if unsafe { GetWindowRect(root, &mut frame) } != 0 {
+        chrome.window_x = frame.left as f32;
+        chrome.window_y = frame.top as f32;
+        chrome.outer_w = (frame.right - frame.left) as f32;
+        chrome.outer_h = (frame.bottom - frame.top) as f32;
+    }
+    let monitor = unsafe { MonitorFromWindow(root, MONITOR_DEFAULTTONEAREST) };
+    if !monitor.is_null() {
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            rcMonitor: RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            },
+            rcWork: RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            },
+            dwFlags: 0,
+        };
+        if unsafe { GetMonitorInfoW(monitor, &mut info) } != 0 {
+            chrome.screen_w = (info.rcMonitor.right - info.rcMonitor.left) as f32;
+            chrome.screen_h = (info.rcMonitor.bottom - info.rcMonitor.top) as f32;
+            chrome.avail_x = info.rcWork.left as f32;
+            chrome.avail_y = info.rcWork.top as f32;
+            chrome.avail_w = (info.rcWork.right - info.rcWork.left) as f32;
+            chrome.avail_h = (info.rcWork.bottom - info.rcWork.top) as f32;
+        }
+    }
+    chrome
 }
 
 /// Map a screen point into the attached window's client space.
@@ -622,7 +685,7 @@ pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
     let focused = !foreground.is_null()
         && (foreground == hwnd || foreground == root || unsafe { IsChild(foreground, hwnd) != 0 });
 
-    let snap = Snapshot {
+    let mut snap = Snapshot {
         flags: FLAG_VALID
             | if in_bounds && unobstructed {
                 FLAG_INSIDE
@@ -634,8 +697,6 @@ pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
         client_y: mapped.client_y,
         screen_x: mapped.screen_x,
         screen_y: mapped.screen_y,
-        view_w: width,
-        view_h: height,
         buttons: current_buttons(),
         modifiers: current_modifiers(),
         // No pressure without WM_POINTER; the session falls back to buttons.
@@ -644,7 +705,11 @@ pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
         tilt_y: 0.0,
         twist: 0.0,
         pointer_type: PTR_MOUSE,
+        ..Snapshot::empty()
     };
+    snap.inner_w = width;
+    snap.inner_h = height;
+    snap.apply_chrome(window_chrome(hwnd, width, height));
     unsafe {
         *out = snap;
     }

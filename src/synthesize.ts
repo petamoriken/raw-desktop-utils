@@ -386,20 +386,31 @@ export function synthesize(
 }
 
 export function snapshotEqual(a: PointerSnapshot, b: PointerSnapshot): boolean {
-  return a.valid === b.valid &&
-    a.inside === b.inside &&
-    a.focused === b.focused &&
-    a.clientX === b.clientX &&
-    a.clientY === b.clientY &&
-    a.screenX === b.screenX &&
-    a.screenY === b.screenY &&
-    a.viewWidth === b.viewWidth &&
-    a.viewHeight === b.viewHeight &&
-    a.buttons === b.buttons &&
-    a.modifiers === b.modifiers &&
-    a.pressure === b.pressure &&
-    a.tiltX === b.tiltX &&
-    a.tiltY === b.tiltY &&
-    a.twist === b.twist &&
-    a.pointerType === b.pointerType;
+  return Object.is(a.valid, b.valid) &&
+    Object.is(a.inside, b.inside) &&
+    Object.is(a.focused, b.focused) &&
+    Object.is(a.clientX, b.clientX) &&
+    Object.is(a.clientY, b.clientY) &&
+    Object.is(a.screenX, b.screenX) &&
+    Object.is(a.screenY, b.screenY) &&
+    Object.is(a.viewWidth, b.viewWidth) &&
+    Object.is(a.viewHeight, b.viewHeight) &&
+    Object.is(a.devicePixelRatio, b.devicePixelRatio) &&
+    Object.is(a.windowX, b.windowX) &&
+    Object.is(a.windowY, b.windowY) &&
+    Object.is(a.outerWidth, b.outerWidth) &&
+    Object.is(a.outerHeight, b.outerHeight) &&
+    Object.is(a.screenWidth, b.screenWidth) &&
+    Object.is(a.screenHeight, b.screenHeight) &&
+    Object.is(a.availLeft, b.availLeft) &&
+    Object.is(a.availTop, b.availTop) &&
+    Object.is(a.availWidth, b.availWidth) &&
+    Object.is(a.availHeight, b.availHeight) &&
+    Object.is(a.buttons, b.buttons) &&
+    Object.is(a.modifiers, b.modifiers) &&
+    Object.is(a.pressure, b.pressure) &&
+    Object.is(a.tiltX, b.tiltX) &&
+    Object.is(a.tiltY, b.tiltY) &&
+    Object.is(a.twist, b.twist) &&
+    Object.is(a.pointerType, b.pointerType);
 }
