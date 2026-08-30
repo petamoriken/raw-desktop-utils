@@ -8,7 +8,7 @@
 
 use std::ffi::{c_void, CStr};
 use std::ptr::{self, NonNull};
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -86,6 +86,7 @@ struct State {
     recent: [Recent; RECENT_CAP],
     recent_n: usize,
     last_buttons: Option<u32>,
+    last_keys: u128,
     tablet: Tablet,
 }
 
@@ -102,6 +103,7 @@ static STATE: Mutex<State> = Mutex::new(State {
     recent: [Recent::empty(); RECENT_CAP],
     recent_n: 0,
     last_buttons: None,
+    last_keys: 0,
     tablet: Tablet {
         pressure: -1.0,
         tilt_x: 0.0,
@@ -116,18 +118,67 @@ extern "C" fn call_once<F: FnOnce()>(ctx: *mut c_void) {
     work();
 }
 
+extern "C" fn call_boxed(ctx: *mut c_void) {
+    let work = unsafe { Box::from_raw(ctx.cast::<Box<dyn FnOnce() + Send>>()) };
+    work();
+}
+
+/// 0 = unknown, 1 = main queue pumps (hop), 2 = no pump (run inline).
+const HOP_UNKNOWN: u8 = 0;
+const HOP_DISPATCH: u8 = 1;
+const HOP_INLINE: u8 = 2;
+static HOP: AtomicU8 = AtomicU8::new(HOP_UNKNOWN);
+
 fn on_main<F: FnOnce()>(work: F) {
-    // Always hop when we are not on the main thread. `NSApp.isRunning` is
-    // only readable on the main thread, so a "not running" shortcut would
-    // run AppKit work on the Deno worker and `require_mtm` would fail
-    // (`find_window` / `snapshot` would look like a missing window).
     if NSThread::isMainThread_class() {
+        HOP.store(HOP_DISPATCH, Ordering::Relaxed);
         work();
         return;
     }
-    let ctx = Box::into_raw(Box::new(work)).cast();
+    match HOP.load(Ordering::Relaxed) {
+        HOP_DISPATCH => {
+            let ctx = Box::into_raw(Box::new(work)).cast();
+            unsafe {
+                DispatchQueue::main().exec_sync_f(ctx, call_once::<F>);
+            }
+        }
+        HOP_INLINE => work(),
+        _ => hop_probe(work),
+    }
+}
+
+/// First off-main call: try the main queue briefly. `deno test` blocks the
+/// main thread on the test, so `exec_sync` deadlocks; after a short wait we
+/// run inline. `deno desktop` pumps AppKit, so the async hop finishes.
+fn hop_probe<F: FnOnce()>(work: F) {
+    let taken = Arc::new(AtomicBool::new(false));
+    let done = Arc::new(AtomicBool::new(false));
+    let work_ptr = Box::into_raw(Box::new(work)) as usize;
+    let taken_main = taken.clone();
+    let done_main = done.clone();
+    let job: Box<dyn FnOnce() + Send> = Box::new(move || {
+        if !taken_main.swap(true, Ordering::SeqCst) {
+            let job = unsafe { Box::from_raw(work_ptr as *mut F) };
+            job();
+        }
+        done_main.store(true, Ordering::SeqCst);
+    });
+    let ctx = Box::into_raw(Box::new(job)).cast();
     unsafe {
-        DispatchQueue::main().exec_sync_f(ctx, call_once::<F>);
+        DispatchQueue::main().exec_async_f(ctx, call_boxed);
+    }
+    let start = Instant::now();
+    while !done.load(Ordering::SeqCst) && start.elapsed() < Duration::from_millis(80) {
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    if done.load(Ordering::SeqCst) {
+        HOP.store(HOP_DISPATCH, Ordering::Relaxed);
+        return;
+    }
+    HOP.store(HOP_INLINE, Ordering::Relaxed);
+    if !taken.swap(true, Ordering::SeqCst) {
+        let job = unsafe { Box::from_raw(work_ptr as *mut F) };
+        job();
     }
 }
 
@@ -316,7 +367,11 @@ fn event_for_attached(event: &NSEvent, view: &NSView, mtm: MainThreadMarker) -> 
     }
     let t = event.r#type();
     if t == NSEventType::KeyDown || t == NSEventType::KeyUp {
-        return ours.isKeyWindow();
+        // Raw winit windows are often main but not key. Take keys when
+        // this app is active so a focused game still sees Enter / letters.
+        return ours.isKeyWindow()
+            || ours.isMainWindow()
+            || NSApplication::sharedApplication(mtm).isActive();
     }
     map_screen(view, event_screen(event, mtm), false, mtm).is_some_and(|m| m.inside)
 }
@@ -334,6 +389,13 @@ fn session_buttons() -> u32 {
         bits |= 4;
     }
     bits | dom_buttons(NSEvent::pressedMouseButtons())
+}
+
+fn session_key_down(code: u16) -> bool {
+    extern "C" {
+        fn CGEventSourceKeyState(state_id: i32, key: u16) -> bool;
+    }
+    unsafe { CGEventSourceKeyState(0, code) }
 }
 
 fn same_recent(a: &Recent, ev: &QueuedEvent) -> bool {
@@ -546,6 +608,65 @@ fn push_button_delta(prev: u32, next: u32, view: &NSView, mtm: MainThreadMarker)
     }
 }
 
+fn sample_keys(view: &NSView, mtm: MainThreadMarker) {
+    let Some(window) = view.window() else {
+        return;
+    };
+    if !window.isKeyWindow()
+        && !window.isMainWindow()
+        && !NSApplication::sharedApplication(mtm).isActive()
+    {
+        let mut state = match STATE.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        state.last_keys = 0;
+        return;
+    }
+    let mut now = 0u128;
+    for code in 0..128u16 {
+        if session_key_down(code) {
+            now |= 1u128 << code;
+        }
+    }
+    let prev = {
+        let mut state = match STATE.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let prev = state.last_keys;
+        state.last_keys = now;
+        prev
+    };
+    if prev == now {
+        return;
+    }
+    let mods = modifiers(NSEvent::modifierFlags_class());
+    let screen = NSEvent::mouseLocation();
+    let mapped = map_screen(view, screen, false, mtm);
+    for code in 0..128u16 {
+        let bit = 1u128 << code;
+        let was = prev & bit != 0;
+        let is = now & bit != 0;
+        if was == is {
+            continue;
+        }
+        let mut ev = QueuedEvent::empty();
+        ev.type_ = if is { EV_KEY_DOWN } else { EV_KEY_UP };
+        ev.key_code = code as u32;
+        ev.modifiers = mods;
+        ev.buttons = session_buttons();
+        ev.pressure = -1.0;
+        if let Some(m) = &mapped {
+            ev.client_x = m.client_x;
+            ev.client_y = m.client_y;
+            ev.screen_x = m.screen_x;
+            ev.screen_y = m.screen_y;
+        }
+        push(ev);
+    }
+}
+
 fn sample_buttons() {
     let attached = match STATE.lock() {
         Ok(s) => s.attached,
@@ -576,6 +697,7 @@ fn sample_buttons() {
     if prev != buttons {
         push_button_delta(prev, buttons, &view, mtm);
     }
+    sample_keys(&view, mtm);
 }
 
 fn start_sampler() {
@@ -681,6 +803,7 @@ pub extern "C" fn rdu_attach(view_ptr: *mut c_void) -> i32 {
         state.recent = [Recent::empty(); RECENT_CAP];
         state.recent_n = 0;
         state.last_buttons = None;
+        state.last_keys = 0;
         install_monitor(&mut state);
         ok_store.store(1, Ordering::SeqCst);
     });

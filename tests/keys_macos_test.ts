@@ -20,6 +20,7 @@ Deno.test("mac key codes map to UI Events code/key", () => {
   assertEquals(keyFromMac(36, "\r"), "Enter");
   assertEquals(keyFromMac(49, " "), " ");
   assertEquals(keyFromMac(0, "a"), "a");
+  assertEquals(keyFromMac(0, ""), "a");
   assertEquals(keyFromMac(122, ""), "F1");
   assertEquals(locationFromCode("ShiftLeft"), 1);
   assertEquals(locationFromCode("MetaRight"), 2);

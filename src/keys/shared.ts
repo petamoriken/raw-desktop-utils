@@ -40,5 +40,9 @@ export function keyFromUiCode(code: string, chars: string): string {
   if (code && CODE_TO_KEY[code]) return CODE_TO_KEY[code];
   if (/^F\d+$/.test(code)) return code;
   if (chars.length > 0) return chars;
+  const letter = /^Key([A-Z])$/.exec(code);
+  if (letter) return letter[1]!.toLowerCase();
+  const digit = /^Digit([0-9])$/.exec(code);
+  if (digit) return digit[1]!;
   return code || "Unidentified";
 }

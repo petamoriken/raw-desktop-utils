@@ -124,6 +124,27 @@ input.addEventListener("pointerdown", (event) => {
   paint();
 });
 
+input.addEventListener("keydown", (event) => {
+  record("keydown", {
+    key: event.key,
+    code: event.code,
+    location: event.location,
+    repeat: event.repeat,
+    shift: event.shiftKey,
+    ctrl: event.ctrlKey,
+    alt: event.altKey,
+    meta: event.metaKey,
+  });
+});
+
+input.addEventListener("keyup", (event) => {
+  record("keyup", {
+    key: event.key,
+    code: event.code,
+    location: event.location,
+  });
+});
+
 input.addEventListener("pointerup", (event) => {
   record("pointerup", {
     button: event.button,
