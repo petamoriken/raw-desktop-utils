@@ -2,7 +2,7 @@
  * macOS-only entry. Import this from Vite / esbuild when the bundle
  * should not contain Windows or Linux backends or key tables:
  *
- *   import { attach } from "raw-desktop-events/macos";
+ *   import { attach } from "@petamoriken/raw-desktop-utils/macos";
  */
 import { loadMacos } from "../native/macos.ts";
 import { attachWith, type InputSession } from "../session.ts";

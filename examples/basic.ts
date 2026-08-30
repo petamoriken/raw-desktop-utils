@@ -6,7 +6,7 @@
  */
 import { attach } from "../mod.ts";
 
-const TITLE = "raw-desktop-events example";
+const TITLE = "raw-desktop-utils example";
 
 if (!("BrowserWindow" in Deno)) {
   throw new Error("Run with `deno desktop`, not `deno run`.");

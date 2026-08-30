@@ -46,7 +46,7 @@ export function rustHostTriple(): string {
       return `${arch}-unknown-linux-gnu`;
     default:
       throw new Error(
-        `raw-desktop-events: no Rust triple for ${Deno.build.os}-${Deno.build.arch}`,
+        `raw-desktop-utils: no Rust triple for ${Deno.build.os}-${Deno.build.arch}`,
       );
   }
 }

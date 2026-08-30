@@ -2,7 +2,7 @@
  * Linux-only entry. Import this from Vite / esbuild when the bundle
  * should not contain macOS or Windows backends:
  *
- *   import { attach } from "raw-desktop-events/linux";
+ *   import { attach } from "@petamoriken/raw-desktop-utils/linux";
  */
 import { loadLinux } from "../native/linux.ts";
 import { NativeUnsupportedError } from "../native/backend.ts";

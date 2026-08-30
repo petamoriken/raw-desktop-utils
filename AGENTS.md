@@ -47,8 +47,8 @@ take `--allow-run`.
   tests.
 - Split OS key maps (`src/keys/{macos,windows,linux}.ts`). The decoder takes a
   `KeyTranslator`; it must not import a macOS table. Bundlers should import
-  `raw-desktop-events/macos` (or `/windows`, `/linux`) so unused backends drop
-  out.
+  `@petamoriken/raw-desktop-utils/macos` (or `/windows`, `/linux`) so unused
+  backends drop out.
 - Event / session inspect uses `Symbol.for("Deno.customInspect")` and a
   `#field in this` brand check. Logging `Foo.prototype` must not throw.
 - Tests live in `tests/`. Keep `deno task check` green.

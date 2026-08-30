@@ -3,7 +3,7 @@ name = "rde_events"
 version = "0.1.0"
 edition = "2021"
 publish = false
-description = "Native helper for raw-desktop-events (cdylib)"
+description = "Native helper for raw-desktop-utils (cdylib)"
 license = "MIT"
 
 [lib]

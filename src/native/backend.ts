@@ -17,7 +17,7 @@ export class NativeUnsupportedError extends Error {
   constructor(os: string, detail?: string) {
     const extra = detail ? ` ${detail}` : "";
     super(
-      `raw-desktop-events: the ${os} backend is not implemented yet.${extra} ` +
+      `raw-desktop-utils: the ${os} backend is not implemented yet.${extra} ` +
         `See native/${os === "darwin" ? "macos" : os}/ for the ABI and TODOs.`,
     );
     this.name = "NativeUnsupportedError";

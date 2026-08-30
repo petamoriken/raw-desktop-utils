@@ -137,7 +137,7 @@ export class InputSession extends EventTarget {
 
   #assertOpen(): void {
     if (this.#closed) {
-      throw new Error("raw-desktop-events: InputSession is closed");
+      throw new Error("raw-desktop-utils: InputSession is closed");
     }
   }
 
@@ -190,11 +190,11 @@ export async function attachWith(
     const hint = options.title
       ? ` (title=${JSON.stringify(options.title)})`
       : "";
-    throw new Error(`raw-desktop-events: native window not found${hint}`);
+    throw new Error(`raw-desktop-utils: native window not found${hint}`);
   }
   if (!native.attach(handle, display)) {
     throw new Error(
-      "raw-desktop-events: failed to attach to the native window",
+      "raw-desktop-utils: failed to attach to the native window",
     );
   }
   return new InputSession(win, native, handle, options);

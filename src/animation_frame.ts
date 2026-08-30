@@ -33,7 +33,7 @@ export class AnimationFrames {
 
   request(callback: FrameRequestCallback): number {
     if (this.#closed) {
-      throw new Error("raw-desktop-events: InputSession is closed");
+      throw new Error("raw-desktop-utils: InputSession is closed");
     }
     const raf = hostRaf();
     if (raf) {

@@ -1,4 +1,4 @@
-# raw-desktop-events
+# raw-desktop-utils
 
 UI Events and Pointer Events for
 [`deno desktop`](https://docs.deno.com/runtime/desktop/) **raw** mode.
@@ -19,18 +19,15 @@ Linux `.so` files are built with Docker when the host is not Linux
 
 ## Install
 
-Intended for [JSR](https://jsr.io). Until it is published, import from the repo
-path:
-
 ```ts
-import { attach } from "../raw-desktop-events/mod.ts";
+import { attach } from "jsr:@petamoriken/raw-desktop-utils";
 ```
 
 Vite / esbuild should import a platform subpath so unused OS backends and key
 tables are dropped from the bundle:
 
 ```ts
-import { attach } from "raw-desktop-events/macos";
+import { attach } from "jsr:@petamoriken/raw-desktop-utils/macos";
 ```
 
 Permissions: `--allow-ffi --allow-read --allow-write --allow-env`. The package

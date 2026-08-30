@@ -74,7 +74,7 @@ export async function loadMacos(): Promise<MacosBackend> {
   if (backend.abiVersion !== ABI_VERSION) {
     dl.close();
     throw new Error(
-      `raw-desktop-events: native ABI ${backend.abiVersion} != ${ABI_VERSION}`,
+      `raw-desktop-utils: native ABI ${backend.abiVersion} != ${ABI_VERSION}`,
     );
   }
   return backend;
