@@ -3,8 +3,9 @@
  * Build the Rust cdylib and copy it into native/prebuilt/.
  *
  *   deno task build:native
- *   deno task build:native -- --target aarch64-apple-darwin
- *   deno task build:native -- --target aarch64-unknown-linux-gnu
+ *   deno task build:native -- build
+ *   deno task build:native -- build --target aarch64-apple-darwin
+ *   deno task build:native -- build --target aarch64-unknown-linux-gnu
  *
  * Linux triples on a non-Linux host use Docker (rust:1-bookworm).
  */
@@ -37,15 +38,40 @@ function tripleToPrebuilt(triple: string): string {
   return name;
 }
 
-function parseTarget(): string {
-  const idx = Deno.args.indexOf("--target");
-  if (idx >= 0 && Deno.args[idx + 1]) return Deno.args[idx + 1]!;
+function parseTarget(args: string[]): string {
+  const idx = args.indexOf("--target");
+  if (idx >= 0 && args[idx + 1]) return args[idx + 1]!;
   return rustHostTriple();
 }
 
-function wantsDocker(triple: string): boolean {
-  if (Deno.args.includes("--docker")) return true;
+function wantsDocker(triple: string, args: string[]): boolean {
+  if (args.includes("--docker")) return true;
   return triple.includes("linux") && Deno.build.os !== "linux";
+}
+
+function printHelp(): void {
+  console.log(`Build the Rust cdylib into native/prebuilt/.
+
+Usage:
+  deno task build:native -- <command> [options]
+
+Commands:
+  build              Build for the host triple (or --target)
+  help               Show this help
+
+Options for build:
+  --target <triple>  Rust target triple (default: host)
+  --docker           Force the Linux Docker path
+  -h, --help         Show this help
+
+Examples:
+  deno task build:native -- build
+  deno task build:native -- build --target aarch64-unknown-linux-gnu
+
+Linux triples on a non-Linux host use Docker (rust:1-bookworm).
+Supported triples:
+  ${Object.keys(TRIPLE_TO_PREBUILT).join("\n  ")}
+`);
 }
 
 function repoRoot(): URL {
@@ -134,19 +160,40 @@ async function buildWithDocker(triple: string): Promise<URL> {
   return dest;
 }
 
-const triple = parseTarget();
-const artifact = wantsDocker(triple)
-  ? await buildWithDocker(triple)
-  : await buildWithCargo(triple);
+async function build(args: string[]): Promise<void> {
+  if (args.includes("-h") || args.includes("--help")) {
+    printHelp();
+    return;
+  }
+  const triple = parseTarget(args);
+  const docker = wantsDocker(triple, args);
+  const artifact = docker
+    ? await buildWithDocker(triple)
+    : await buildWithCargo(triple);
 
-if (!wantsDocker(triple)) {
-  const dest = new URL(
-    `../prebuilt/${tripleToPrebuilt(triple)}`,
-    rustCrateDir(),
-  );
-  await Deno.mkdir(new URL(".", dest), { recursive: true });
-  await Deno.copyFile(artifact, dest);
-  console.log(`wrote ${dest.pathname} (${prebuiltFileName()})`);
+  if (!docker) {
+    const dest = new URL(
+      `../prebuilt/${tripleToPrebuilt(triple)}`,
+      rustCrateDir(),
+    );
+    await Deno.mkdir(new URL(".", dest), { recursive: true });
+    await Deno.copyFile(artifact, dest);
+    console.log(`wrote ${dest.pathname} (${prebuiltFileName()})`);
+  } else {
+    console.log(`wrote ${artifact.pathname}`);
+  }
+}
+
+const args = Deno.args[0] === "--" ? Deno.args.slice(1) : Deno.args;
+const command = args[0];
+if (
+  !command || command === "help" || command === "-h" || command === "--help"
+) {
+  printHelp();
+} else if (command === "build") {
+  await build(args.slice(1));
 } else {
-  console.log(`wrote ${artifact.pathname}`);
+  console.error(`unknown command: ${command}`);
+  printHelp();
+  Deno.exit(1);
 }

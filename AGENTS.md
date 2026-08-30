@@ -8,9 +8,10 @@ JSR. Comments, commit messages, and this file are English.
 - Check: `deno task check` (`lint` + `fmt --check` + `test`)
 - Tests: `deno task test`
 - Format: `deno task fmt`
-- Native helper: `deno task build:native` (optionally `-- --target <triple>`)
-- Linux helper from macOS/Windows: `deno task build:native:linux` (Docker +
-  `rust:1-bookworm`)
+- Native helper: `deno task build:native -- build` (optional
+  `--target <triple>`)
+- Linux from macOS/Windows (Docker + `rust:1-bookworm`):
+  `deno task build:native -- build --target aarch64-unknown-linux-gnu`
 
 Runtime needs `--allow-ffi --allow-read --allow-write --allow-env`. Tests also
 take `--allow-run`.
@@ -38,9 +39,9 @@ take `--allow-run`.
 
 ## Hard rules
 
-- After changing `native/rde-events`, run `deno task build:native` and commit
-  the updated prebuilt. A same-sized cache file in `TMPDIR` is not proof it is
-  current (path includes a checksum).
+- After changing `native/rde-events`, run `deno task build:native -- build` and
+  commit the updated prebuilt. A same-sized cache file in `TMPDIR` is not proof
+  it is current (path includes a checksum).
 - On macOS, stay in screen space. Cursor Y is `NSMaxY(viewOnScreen) - screen.y`.
   Do not use `convertPoint` or `isFlipped` on winit views; those invert hit
   tests.

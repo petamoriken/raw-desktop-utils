@@ -11,7 +11,7 @@ synthesizes the same event shapes a browser would dispatch.
 macOS (AppKit) and Linux (X11, or Wayland when `WAYLAND_DISPLAY` is set) are
 implemented. Windows still uses the stub in `native/rde-events/src/stub.rs`.
 Linux `.so` files are built with Docker when the host is not Linux
-(`deno task build:native:linux`).
+(`deno task build:native -- build --target aarch64-unknown-linux-gnu`).
 
 ## Install
 
@@ -32,7 +32,7 @@ import { attach } from "raw-desktop-events/macos";
 Permissions: `--allow-ffi --allow-read --allow-write --allow-env`. The package
 loads a committed prebuilt (`native/prebuilt/`) so a `deno desktop` /
 `deno compile` host does not need `cargo`. Refresh the prebuilt in this repo
-with `deno task build:native`.
+with `deno task build:native -- build`.
 
 ## Usage
 
@@ -101,11 +101,11 @@ X11 or Wayland (same `WAYLAND_DISPLAY` rule as laufey_winit). Windows still
 exports the same C symbols as a stub.
 
 ```sh
-deno task build:native
-deno task build:native -- --target aarch64-apple-darwin
-deno task build:native:linux
+deno task build:native -- build
+deno task build:native -- build --target aarch64-apple-darwin
+deno task build:native -- build --target aarch64-unknown-linux-gnu
 # or, for x86_64 Linux from a Mac:
-deno task build:native -- --target x86_64-unknown-linux-gnu
+deno task build:native -- build --target x86_64-unknown-linux-gnu
 ```
 
 That writes `native/prebuilt/<os>-<arch>.{dylib,dll,so}`. Runtime code embeds

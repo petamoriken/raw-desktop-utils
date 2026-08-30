@@ -7,6 +7,6 @@ export function linuxPrebuilt(): Uint8Array {
   if (Deno.build.arch === "aarch64") return linuxAarch64;
   throw new Error(
     `raw-desktop-events: no prebuilt for linux-${Deno.build.arch}. ` +
-      "On that machine run: deno task build:native -- --target x86_64-unknown-linux-gnu",
+      "On that machine run: deno task build:native -- build --target x86_64-unknown-linux-gnu",
   );
 }
