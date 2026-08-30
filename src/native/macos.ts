@@ -7,7 +7,6 @@ import { inspectBranded, type InspectFn, kCustomInspect } from "../inspect.ts";
 import { ABI_VERSION, QUEUED_EVENT_BYTES, SNAPSHOT_BYTES } from "./abi.ts";
 import type { NativeBackend } from "./backend.ts";
 import { macKeys } from "../keys/macos.ts";
-import { compileRust } from "./compile.ts";
 import { decodeQueuedEvents, decodeSnapshot } from "./decode.ts";
 import { materializeLibrary } from "./load.ts";
 
@@ -78,9 +77,7 @@ export class MacosBackend implements NativeBackend {
 }
 
 export async function loadMacos(): Promise<MacosBackend> {
-  const path = Deno.env.get("RDE_COMPILE") === "1"
-    ? await compileRust()
-    : await materializePrebuilt();
+  const path = await materializePrebuilt();
   const dl = Deno.dlopen(path, SYMBOLS);
   const backend = new MacosBackend(dl);
   if (backend.abiVersion !== ABI_VERSION) {

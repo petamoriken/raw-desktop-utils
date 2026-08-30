@@ -27,12 +27,10 @@ tables are dropped from the bundle:
 import { attach } from "raw-desktop-events/macos";
 ```
 
-Permissions: `--allow-ffi --allow-read --allow-write --allow-env` (add
-`--allow-run` only if you rebuild from Rust with `RDE_COMPILE=1`). By default
-the package loads a committed prebuilt (`native/prebuilt/`) so a `deno desktop`
-/ `deno compile` host does not need `cargo` or `clang`. Rebuild and refresh the
-prebuilt with `deno task build:native`. Set `RDE_COMPILE=1` to build the crate
-on the fly instead.
+Permissions: `--allow-ffi --allow-read --allow-write --allow-env`. The package
+loads a committed prebuilt (`native/prebuilt/`) so a `deno desktop` /
+`deno compile` host does not need `cargo`. Refresh the prebuilt in this repo
+with `deno task build:native`.
 
 ## Usage
 
