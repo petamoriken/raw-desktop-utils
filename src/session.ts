@@ -1,15 +1,7 @@
 import { cloneSynthesized, type SynthesizedEvent } from "./events.ts";
-import {
-  formatInspect,
-  kCustomInspect,
-  type InspectFn,
-} from "./inspect.ts";
+import { formatInspect, type InspectFn, kCustomInspect } from "./inspect.ts";
 import { synthesize } from "./synthesize.ts";
-import type {
-  AttachOptions,
-  DesktopWindow,
-  PointerSnapshot,
-} from "./types.ts";
+import type { AttachOptions, DesktopWindow, PointerSnapshot } from "./types.ts";
 import { emptySnapshot } from "./types.ts";
 import { loadNative, type NativeBackend } from "./native/mod.ts";
 
@@ -104,16 +96,21 @@ export class InputSession extends EventTarget {
   }
 
   [kCustomInspect](inspect: InspectFn, options?: Deno.InspectOptions): string {
-    return formatInspect("InputSession", {
-      closed: this.#closed,
-      os: this.#native.os,
-      inside: this.#last.inside,
-      focused: this.#last.focused,
-      clientX: this.#last.clientX,
-      clientY: this.#last.clientY,
-      buttons: this.#last.buttons,
-      autoPoll: this.#timer !== null,
-    }, inspect, options);
+    return formatInspect(
+      "InputSession",
+      {
+        closed: this.#closed,
+        os: this.#native.os,
+        inside: this.#last.inside,
+        focused: this.#last.focused,
+        clientX: this.#last.clientX,
+        clientY: this.#last.clientY,
+        buttons: this.#last.buttons,
+        autoPoll: this.#timer !== null,
+      },
+      inspect,
+      options,
+    );
   }
 }
 
@@ -121,14 +118,26 @@ export async function attach(
   win: DesktopWindow,
   options: AttachOptions = {},
 ): Promise<InputSession> {
-  const native = await loadNative();
+  return attachWith(await loadNative(), win, options);
+}
+
+/** Attach using an already-loaded backend (platform subpath entries). */
+export async function attachWith(
+  native: NativeBackend,
+  win: DesktopWindow,
+  options: AttachOptions = {},
+): Promise<InputSession> {
   const handle = options.native ?? await locateHandle(native, options);
   if (!handle) {
-    const hint = options.title ? ` (title=${JSON.stringify(options.title)})` : "";
+    const hint = options.title
+      ? ` (title=${JSON.stringify(options.title)})`
+      : "";
     throw new Error(`raw-desktop-events: native window not found${hint}`);
   }
   if (!native.attach(handle)) {
-    throw new Error("raw-desktop-events: failed to attach to the native window");
+    throw new Error(
+      "raw-desktop-events: failed to attach to the native window",
+    );
   }
   return new InputSession(win, native, handle, options);
 }

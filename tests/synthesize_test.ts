@@ -1,6 +1,6 @@
-import { assertEquals, assert } from "@std/assert";
-import { MouseEvent, PointerEvent, WheelEvent } from "./events.ts";
-import { synthesize } from "./synthesize.ts";
+import { assert, assertEquals } from "@std/assert";
+import { MouseEvent, PointerEvent, WheelEvent } from "../src/events.ts";
+import { synthesize } from "../src/synthesize.ts";
 import {
   BUTTONS_PRIMARY,
   BUTTONS_SECONDARY,
@@ -11,7 +11,7 @@ import {
   NATIVE_EVENT_WHEEL,
   type NativeQueuedEvent,
   type PointerSnapshot,
-} from "./types.ts";
+} from "../src/types.ts";
 
 function snap(partial: Partial<PointerSnapshot> = {}): PointerSnapshot {
   return {
@@ -128,24 +128,28 @@ Deno.test("right button up synthesizes auxclick and contextmenu", () => {
 
 Deno.test("queued down/up is authoritative", () => {
   const start = snap({ clientX: 8, clientY: 9 });
-  const { events } = synthesize(start, snap({ clientX: 8, clientY: 9, buttons: 0 }), [
-    queued({
-      type: NATIVE_EVENT_POINTER_DOWN,
-      button: 0,
-      buttons: 1,
-      clientX: 8,
-      clientY: 9,
-      clickCount: 1,
-    }),
-    queued({
-      type: NATIVE_EVENT_POINTER_UP,
-      button: 0,
-      buttons: 0,
-      clientX: 8,
-      clientY: 9,
-      clickCount: 1,
-    }),
-  ]);
+  const { events } = synthesize(
+    start,
+    snap({ clientX: 8, clientY: 9, buttons: 0 }),
+    [
+      queued({
+        type: NATIVE_EVENT_POINTER_DOWN,
+        button: 0,
+        buttons: 1,
+        clientX: 8,
+        clientY: 9,
+        clickCount: 1,
+      }),
+      queued({
+        type: NATIVE_EVENT_POINTER_UP,
+        button: 0,
+        buttons: 0,
+        clientX: 8,
+        clientY: 9,
+        clickCount: 1,
+      }),
+    ],
+  );
   assertEquals(typesOf(events), [
     "pointerdown",
     "mousedown",
@@ -224,5 +228,8 @@ Deno.test("dblclick comes from clickCount 2", () => {
       clickCount: 2,
     }),
   ]);
-  assertEquals(events.some((e) => e instanceof MouseEvent && e.type === "dblclick"), true);
+  assertEquals(
+    events.some((e) => e instanceof MouseEvent && e.type === "dblclick"),
+    true,
+  );
 });

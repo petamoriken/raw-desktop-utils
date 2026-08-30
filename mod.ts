@@ -5,10 +5,7 @@
  * This package samples the OS via FFI and synthesizes the same event
  * shapes a browser would dispatch.
  */
-export {
-  attach,
-  InputSession,
-} from "./src/session.ts";
+export { attach, attachWith, InputSession } from "./src/session.ts";
 export {
   cloneSynthesized,
   KeyboardEvent,
@@ -34,19 +31,19 @@ export {
 } from "./src/native/mod.ts";
 export type { NativeBackend } from "./src/native/mod.ts";
 export {
+  bitFromButton,
   BUTTON_AUXILIARY,
   BUTTON_BACK,
   BUTTON_FORWARD,
   BUTTON_PRIMARY,
   BUTTON_SECONDARY,
+  buttonFromBit,
   BUTTONS_AUXILIARY,
   BUTTONS_BACK,
   BUTTONS_FORWARD,
   BUTTONS_NONE,
   BUTTONS_PRIMARY,
   BUTTONS_SECONDARY,
-  bitFromButton,
-  buttonFromBit,
   effectivePressure,
   emptySnapshot,
   MOD_ALT,

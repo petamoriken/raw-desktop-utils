@@ -1,8 +1,4 @@
-import {
-  formatInspect,
-  kCustomInspect,
-  type InspectFn,
-} from "./inspect.ts";
+import { formatInspect, type InspectFn, kCustomInspect } from "./inspect.ts";
 import type { PointerType } from "./types.ts";
 
 export type UIEventInitDict = EventInit & {
@@ -204,8 +200,16 @@ export class MouseEvent extends UIEvent {
     }
   }
 
-  override [kCustomInspect](inspect: InspectFn, options?: Deno.InspectOptions): string {
-    return formatInspect("MouseEvent", this.#mouseInspectFields(), inspect, options);
+  override [kCustomInspect](
+    inspect: InspectFn,
+    options?: Deno.InspectOptions,
+  ): string {
+    return formatInspect(
+      "MouseEvent",
+      this.#mouseInspectFields(),
+      inspect,
+      options,
+    );
   }
 
   #mouseInspectFields(): Record<string, unknown> {
@@ -303,23 +307,31 @@ export class PointerEvent extends MouseEvent {
     return [];
   }
 
-  override [kCustomInspect](inspect: InspectFn, options?: Deno.InspectOptions): string {
-    return formatInspect("PointerEvent", {
-      type: this.type,
-      pointerId: this.#pointerId,
-      pointerType: this.#pointerType,
-      isPrimary: this.#isPrimary,
-      clientX: this.clientX,
-      clientY: this.clientY,
-      button: this.button,
-      buttons: this.buttons,
-      pressure: this.#pressure,
-      tiltX: this.#tiltX,
-      tiltY: this.#tiltY,
-      twist: this.#twist,
-      movementX: this.movementX,
-      movementY: this.movementY,
-    }, inspect, options);
+  override [kCustomInspect](
+    inspect: InspectFn,
+    options?: Deno.InspectOptions,
+  ): string {
+    return formatInspect(
+      "PointerEvent",
+      {
+        type: this.type,
+        pointerId: this.#pointerId,
+        pointerType: this.#pointerType,
+        isPrimary: this.#isPrimary,
+        clientX: this.clientX,
+        clientY: this.clientY,
+        button: this.button,
+        buttons: this.buttons,
+        pressure: this.#pressure,
+        tiltX: this.#tiltX,
+        tiltY: this.#tiltY,
+        twist: this.#twist,
+        movementX: this.movementX,
+        movementY: this.movementY,
+      },
+      inspect,
+      options,
+    );
   }
 }
 
@@ -354,20 +366,28 @@ export class WheelEvent extends MouseEvent {
   static readonly DOM_DELTA_LINE = 1;
   static readonly DOM_DELTA_PAGE = 2;
 
-  override [kCustomInspect](inspect: InspectFn, options?: Deno.InspectOptions): string {
-    return formatInspect("WheelEvent", {
-      type: this.type,
-      clientX: this.clientX,
-      clientY: this.clientY,
-      deltaX: this.#deltaX,
-      deltaY: this.#deltaY,
-      deltaZ: this.#deltaZ,
-      deltaMode: this.#deltaMode,
-      ctrlKey: this.ctrlKey,
-      shiftKey: this.shiftKey,
-      altKey: this.altKey,
-      metaKey: this.metaKey,
-    }, inspect, options);
+  override [kCustomInspect](
+    inspect: InspectFn,
+    options?: Deno.InspectOptions,
+  ): string {
+    return formatInspect(
+      "WheelEvent",
+      {
+        type: this.type,
+        clientX: this.clientX,
+        clientY: this.clientY,
+        deltaX: this.#deltaX,
+        deltaY: this.#deltaY,
+        deltaZ: this.#deltaZ,
+        deltaMode: this.#deltaMode,
+        ctrlKey: this.ctrlKey,
+        shiftKey: this.shiftKey,
+        altKey: this.altKey,
+        metaKey: this.metaKey,
+      },
+      inspect,
+      options,
+    );
   }
 }
 
@@ -444,19 +464,27 @@ export class KeyboardEvent extends UIEvent {
     }
   }
 
-  override [kCustomInspect](inspect: InspectFn, options?: Deno.InspectOptions): string {
-    return formatInspect("KeyboardEvent", {
-      type: this.type,
-      key: this.#key,
-      code: this.#code,
-      keyCode: this.#keyCode,
-      location: this.#location,
-      repeat: this.#repeat,
-      ctrlKey: this.#ctrlKey,
-      shiftKey: this.#shiftKey,
-      altKey: this.#altKey,
-      metaKey: this.#metaKey,
-    }, inspect, options);
+  override [kCustomInspect](
+    inspect: InspectFn,
+    options?: Deno.InspectOptions,
+  ): string {
+    return formatInspect(
+      "KeyboardEvent",
+      {
+        type: this.type,
+        key: this.#key,
+        code: this.#code,
+        keyCode: this.#keyCode,
+        location: this.#location,
+        repeat: this.#repeat,
+        ctrlKey: this.#ctrlKey,
+        shiftKey: this.#shiftKey,
+        altKey: this.#altKey,
+        metaKey: this.#metaKey,
+      },
+      inspect,
+      options,
+    );
   }
 }
 

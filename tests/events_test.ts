@@ -5,14 +5,14 @@ import {
   PointerEvent,
   UIEvent,
   WheelEvent,
-} from "./events.ts";
+} from "../src/events.ts";
 import {
-  BUTTONS_PRIMARY,
   bitFromButton,
   buttonFromBit,
+  BUTTONS_PRIMARY,
   effectivePressure,
   pointerTypeFromNative,
-} from "./types.ts";
+} from "../src/types.ts";
 
 Deno.test("event inheritance matches UI Events", () => {
   const p = new PointerEvent("pointerdown", {
@@ -41,7 +41,11 @@ Deno.test("wheel and keyboard construct", () => {
   const w = new WheelEvent("wheel", { deltaY: 40, deltaMode: 0, clientX: 1 });
   assertEquals(w.deltaY, 40);
   assertEquals(w.deltaMode, WheelEvent.DOM_DELTA_PIXEL);
-  const k = new KeyboardEvent("keydown", { key: "a", code: "KeyA", ctrlKey: true });
+  const k = new KeyboardEvent("keydown", {
+    key: "a",
+    code: "KeyA",
+    ctrlKey: true,
+  });
   assertEquals(k.key, "a");
   assertEquals(k.getModifierState("Control"), true);
   assertEquals(k.getModifierState("Shift"), false);

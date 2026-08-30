@@ -1,13 +1,13 @@
 import { assertEquals } from "@std/assert";
-import { PointerEvent } from "./events.ts";
-import { kCustomInspect } from "./inspect.ts";
-import type { NativeBackend } from "./native/backend.ts";
-import { InputSession } from "./session.ts";
+import type { PointerEvent } from "../src/events.ts";
+import { kCustomInspect } from "../src/inspect.ts";
+import type { NativeBackend } from "../src/native/backend.ts";
+import { InputSession } from "../src/session.ts";
 import {
   emptySnapshot,
   type NativeQueuedEvent,
   type PointerSnapshot,
-} from "./types.ts";
+} from "../src/types.ts";
 
 function snap(partial: Partial<PointerSnapshot> = {}): PointerSnapshot {
   return {
@@ -50,14 +50,25 @@ class FakeBackend implements NativeBackend {
   }
 }
 
-Deno.test("session poll dispatches synthesized pointer events", () => {
-  const win = new EventTarget() as EventTarget & { getSize: () => [number, number] };
+function desktopWindow(): EventTarget & { getSize: () => [number, number] } {
+  const win = new EventTarget() as EventTarget & {
+    getSize: () => [number, number];
+  };
   win.getSize = () => [100, 80];
+  return win;
+}
+
+Deno.test("session poll dispatches synthesized pointer events", () => {
   const backend = new FakeBackend([
     snap({ clientX: 1, clientY: 2 }),
     snap({ clientX: 3, clientY: 4, buttons: 1 }),
   ]);
-  using session = new InputSession(win, backend, Deno.UnsafePointer.of(new Uint8Array(1)), {});
+  using session = new InputSession(
+    desktopWindow(),
+    backend,
+    Deno.UnsafePointer.of(new Uint8Array(1)),
+    {},
+  );
   const seen: string[] = [];
   session.addEventListener("pointerenter", () => seen.push("pointerenter"));
   session.addEventListener("pointermove", () => seen.push("pointermove"));
@@ -71,10 +82,8 @@ Deno.test("session poll dispatches synthesized pointer events", () => {
 });
 
 Deno.test("session customInspect hides private fields", () => {
-  const win = new EventTarget() as EventTarget & { getSize: () => [number, number] };
-  win.getSize = () => [1, 1];
   const session = new InputSession(
-    win,
+    desktopWindow(),
     new FakeBackend([snap()]),
     Deno.UnsafePointer.of(new Uint8Array(1)),
     {},

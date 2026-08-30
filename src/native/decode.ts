@@ -1,10 +1,10 @@
-import { codeFromMacKeyCode, keyFromMac } from "../keys.ts";
+import type { KeyTranslator } from "../keys/types.ts";
 import {
   emptySnapshot,
-  pointerTypeFromNative,
   type NativeEventKind,
   type NativeQueuedEvent,
   type PointerSnapshot,
+  pointerTypeFromNative,
 } from "../types.ts";
 import {
   FLAG_FOCUSED,
@@ -42,14 +42,18 @@ export function decodeSnapshot(buf: Uint8Array): PointerSnapshot {
 export function decodeQueuedEvent(
   buf: Uint8Array,
   offset: number,
+  keys: KeyTranslator,
 ): NativeQueuedEvent {
-  const v = new DataView(buf.buffer, buf.byteOffset + offset, QUEUED_EVENT_BYTES);
+  const v = new DataView(
+    buf.buffer,
+    buf.byteOffset + offset,
+    QUEUED_EVENT_BYTES,
+  );
   const keyLen = Math.min(v.getUint32(72, true), QUEUED_KEY_BYTES);
   const chars = keyLen > 0
     ? new TextDecoder().decode(buf.subarray(offset + 76, offset + 76 + keyLen))
     : "";
   const keyCode = v.getUint32(20, true);
-  const code = codeFromMacKeyCode(keyCode);
   return {
     type: v.getUint32(0, true) as NativeEventKind,
     button: v.getUint32(4, true),
@@ -70,18 +74,22 @@ export function decodeQueuedEvent(
     tiltY: v.getFloat32(60, true),
     twist: v.getFloat32(64, true),
     pointerType: pointerTypeFromNative(v.getUint32(68, true)),
-    key: keyFromMac(keyCode, chars),
-    code,
+    key: keys.keyFromEvent(keyCode, chars),
+    code: keys.codeFromKeyCode(keyCode),
     repeat: false,
   };
 }
 
-export function decodeQueuedEvents(buf: Uint8Array, count: number): NativeQueuedEvent[] {
+export function decodeQueuedEvents(
+  buf: Uint8Array,
+  count: number,
+  keys: KeyTranslator,
+): NativeQueuedEvent[] {
   const out: NativeQueuedEvent[] = [];
   for (let i = 0; i < count; i++) {
     const offset = i * QUEUED_EVENT_BYTES;
     if (offset + QUEUED_EVENT_BYTES > buf.byteLength) break;
-    out.push(decodeQueuedEvent(buf, offset));
+    out.push(decodeQueuedEvent(buf, offset, keys));
   }
   return out;
 }

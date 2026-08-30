@@ -1,7 +1,10 @@
 /** Deno pretty-print hook used by `Deno.inspect` / `console.log`. */
 export const kCustomInspect = Symbol.for("Deno.customInspect");
 
-export type InspectFn = (value: unknown, options?: Deno.InspectOptions) => string;
+export type InspectFn = (
+  value: unknown,
+  options?: Deno.InspectOptions,
+) => string;
 
 export function formatInspect(
   tag: string,

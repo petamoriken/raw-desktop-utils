@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
-import { ABI_VERSION } from "./abi.ts";
-import { loadMacos } from "./macos.ts";
+import { ABI_VERSION } from "../src/native/abi.ts";
+import { loadMacos } from "../src/native/macos.ts";
 
 Deno.test({
   name: "macOS helper compiles, reports ABI 1, and misses unknown titles",

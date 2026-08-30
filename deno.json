@@ -1,11 +1,22 @@
 {
   "name": "raw-desktop-events",
   "version": "0.1.0",
-  "exports": "./mod.ts",
+  "exports": {
+    ".": "./mod.ts",
+    "./macos": "./src/platforms/macos.ts",
+    "./windows": "./src/platforms/windows.ts",
+    "./linux": "./src/platforms/linux.ts",
+    "./keys/macos": "./src/keys/macos.ts",
+    "./keys/windows": "./src/keys/windows.ts",
+    "./keys/linux": "./src/keys/linux.ts"
+  },
   "license": "MIT",
   "tasks": {
-    "test": "deno test --allow-read --allow-write --allow-ffi --allow-run --allow-env",
-    "dev": "deno test --watch --allow-read --allow-write --allow-ffi --allow-run --allow-env",
+    "test": "deno test --allow-read --allow-write --allow-ffi --allow-run --allow-env tests/",
+    "dev": "deno test --watch --allow-read --allow-write --allow-ffi --allow-run --allow-env tests/",
+    "lint": "deno lint",
+    "fmt": "deno fmt",
+    "check": "deno lint && deno fmt --check && deno test --allow-read --allow-write --allow-ffi --allow-run --allow-env tests/",
     "build:native": "deno run --allow-run --allow-read --allow-write --allow-env tools/build.ts"
   },
   "imports": {
@@ -26,7 +37,7 @@
       "deno.json"
     ],
     "exclude": [
-      "**/*_test.ts",
+      "tests/**",
       "examples/**"
     ]
   }

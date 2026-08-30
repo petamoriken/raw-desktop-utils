@@ -1,3 +1,9 @@
+import { keyFromUiCode } from "./shared.ts";
+import type { KeyTranslator } from "./types.ts";
+
+export type { KeyTranslator } from "./types.ts";
+export { locationFromCode } from "./shared.ts";
+
 /** macOS virtual key codes → UI Events `KeyboardEvent.code`. */
 const MAC_CODE: Record<number, string> = {
   0: "KeyA",
@@ -112,51 +118,15 @@ const MAC_CODE: Record<number, string> = {
   126: "ArrowUp",
 };
 
-const CODE_TO_KEY: Record<string, string> = {
-  Enter: "Enter",
-  NumpadEnter: "Enter",
-  Tab: "Tab",
-  Space: " ",
-  Backspace: "Backspace",
-  Escape: "Escape",
-  MetaLeft: "Meta",
-  MetaRight: "Meta",
-  ShiftLeft: "Shift",
-  ShiftRight: "Shift",
-  AltLeft: "Alt",
-  AltRight: "Alt",
-  ControlLeft: "Control",
-  ControlRight: "Control",
-  CapsLock: "CapsLock",
-  ArrowLeft: "ArrowLeft",
-  ArrowRight: "ArrowRight",
-  ArrowDown: "ArrowDown",
-  ArrowUp: "ArrowUp",
-  Home: "Home",
-  End: "End",
-  PageUp: "PageUp",
-  PageDown: "PageDown",
-  Delete: "Delete",
-  Help: "Help",
-  Fn: "Fn",
-  NumLock: "NumLock",
-};
-
 export function codeFromMacKeyCode(keyCode: number): string {
   return MAC_CODE[keyCode] ?? "";
 }
 
 export function keyFromMac(keyCode: number, chars: string): string {
-  const code = codeFromMacKeyCode(keyCode);
-  if (code && CODE_TO_KEY[code]) return CODE_TO_KEY[code];
-  if (code.startsWith("F") && /^F\d+$/.test(code)) return code;
-  if (chars.length > 0) return chars;
-  return code || "Unidentified";
+  return keyFromUiCode(codeFromMacKeyCode(keyCode), chars);
 }
 
-export function locationFromCode(code: string): number {
-  if (code.endsWith("Left")) return 1;
-  if (code.endsWith("Right")) return 2;
-  if (code.startsWith("Numpad")) return 3;
-  return 0;
-}
+export const macKeys: KeyTranslator = {
+  codeFromKeyCode: codeFromMacKeyCode,
+  keyFromEvent: keyFromMac,
+};

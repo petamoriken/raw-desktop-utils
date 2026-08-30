@@ -1,6 +1,6 @@
-import { NativeUnsupportedError, type NativeBackend } from "./backend.ts";
+import { type NativeBackend, NativeUnsupportedError } from "./backend.ts";
 
-export { NativeUnsupportedError, type NativeBackend } from "./backend.ts";
+export { type NativeBackend, NativeUnsupportedError } from "./backend.ts";
 
 let cached: Promise<NativeBackend> | undefined;
 

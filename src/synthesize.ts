@@ -1,18 +1,18 @@
 import {
   KeyboardEvent,
-  MouseEvent,
-  PointerEvent,
-  WheelEvent,
   type KeyboardEventInitDict,
+  MouseEvent,
   type MouseEventInitDict,
+  PointerEvent,
   type PointerEventInitDict,
   type SynthesizedEvent,
+  WheelEvent,
   type WheelEventInitDict,
 } from "./events.ts";
 import {
+  bitFromButton,
   BUTTON_PRIMARY,
   BUTTON_SECONDARY,
-  bitFromButton,
   buttonFromBit,
   effectivePressure,
   type NativeQueuedEvent,
@@ -135,7 +135,13 @@ function enterLeave(
   if (next.inside) {
     const init = pointerInit(next, prev, { button: 0, detail: 0 }, opts);
     pushPointer(out, "pointerover", init, "mouseover", opts);
-    pushPointer(out, "pointerenter", { ...init, bubbles: false }, "mouseenter", opts);
+    pushPointer(
+      out,
+      "pointerenter",
+      { ...init, bubbles: false },
+      "mouseenter",
+      opts,
+    );
   } else {
     const from = prev ?? next;
     const init = pointerInit(from, prev, {
@@ -147,7 +153,13 @@ function enterLeave(
       screenY: next.screenY,
     }, opts);
     pushPointer(out, "pointerout", init, "mouseout", opts);
-    pushPointer(out, "pointerleave", { ...init, bubbles: false }, "mouseleave", opts);
+    pushPointer(
+      out,
+      "pointerleave",
+      { ...init, bubbles: false },
+      "mouseleave",
+      opts,
+    );
   }
 }
 
@@ -212,7 +224,9 @@ function fireButtonUp(
     if (opts.mouseEvents !== false) {
       out.push(new MouseEvent("auxclick", mouseInit(init)));
       if (button === BUTTON_SECONDARY) {
-        out.push(new MouseEvent("contextmenu", mouseInit(init, { cancelable: true })));
+        out.push(
+          new MouseEvent("contextmenu", mouseInit(init, { cancelable: true })),
+        );
       }
     }
   }

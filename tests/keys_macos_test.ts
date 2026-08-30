@@ -1,5 +1,11 @@
 import { assertEquals } from "@std/assert";
-import { codeFromMacKeyCode, keyFromMac, locationFromCode } from "./keys.ts";
+import {
+  codeFromMacKeyCode,
+  keyFromMac,
+  locationFromCode,
+} from "../src/keys/macos.ts";
+import { linuxKeys } from "../src/keys/linux.ts";
+import { windowsKeys } from "../src/keys/windows.ts";
 
 Deno.test("mac key codes map to UI Events code/key", () => {
   assertEquals(codeFromMacKeyCode(0), "KeyA");
@@ -15,4 +21,11 @@ Deno.test("mac key codes map to UI Events code/key", () => {
   assertEquals(locationFromCode("MetaRight"), 2);
   assertEquals(locationFromCode("Numpad0"), 3);
   assertEquals(locationFromCode("KeyA"), 0);
+});
+
+Deno.test("windows and linux stubs do not use the mac table", () => {
+  assertEquals(windowsKeys.codeFromKeyCode(0), "");
+  assertEquals(windowsKeys.keyFromEvent(0, "a"), "a");
+  assertEquals(linuxKeys.codeFromKeyCode(0), "");
+  assertEquals(linuxKeys.keyFromEvent(36, "\r"), "\r");
 });
