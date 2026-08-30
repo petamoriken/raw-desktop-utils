@@ -4,6 +4,9 @@
  *
  *   deno task build:native
  *   deno task build:native -- --target aarch64-apple-darwin
+ *   deno task build:native -- --target aarch64-unknown-linux-gnu
+ *
+ * Linux triples on a non-Linux host use Docker (rust:1-bookworm).
  */
 
 import {
@@ -13,17 +16,23 @@ import {
   rustHostTriple,
 } from "../src/native/load.ts";
 
+const TRIPLE_TO_PREBUILT: Record<string, string> = {
+  "aarch64-apple-darwin": "darwin-aarch64.dylib",
+  "x86_64-apple-darwin": "darwin-x86_64.dylib",
+  "x86_64-pc-windows-msvc": "windows-x86_64.dll",
+  "x86_64-pc-windows-gnu": "windows-x86_64.dll",
+  "aarch64-pc-windows-msvc": "windows-aarch64.dll",
+  "x86_64-unknown-linux-gnu": "linux-x86_64.so",
+  "aarch64-unknown-linux-gnu": "linux-aarch64.so",
+};
+
+const LINUX_DOCKER_PLATFORM: Record<string, string> = {
+  "aarch64-unknown-linux-gnu": "linux/arm64",
+  "x86_64-unknown-linux-gnu": "linux/amd64",
+};
+
 function tripleToPrebuilt(triple: string): string {
-  const map: Record<string, string> = {
-    "aarch64-apple-darwin": "darwin-aarch64.dylib",
-    "x86_64-apple-darwin": "darwin-x86_64.dylib",
-    "x86_64-pc-windows-msvc": "windows-x86_64.dll",
-    "x86_64-pc-windows-gnu": "windows-x86_64.dll",
-    "aarch64-pc-windows-msvc": "windows-aarch64.dll",
-    "x86_64-unknown-linux-gnu": "linux-x86_64.so",
-    "aarch64-unknown-linux-gnu": "linux-aarch64.so",
-  };
-  const name = map[triple];
+  const name = TRIPLE_TO_PREBUILT[triple];
   if (!name) throw new Error(`no prebuilt name for triple ${triple}`);
   return name;
 }
@@ -34,40 +43,99 @@ function parseTarget(): string {
   return rustHostTriple();
 }
 
-const triple = parseTarget();
-const crate = rustCrateDir();
-const cargo = new Deno.Command("cargo", {
-  args: [
+function wantsDocker(triple: string): boolean {
+  if (Deno.args.includes("--docker")) return true;
+  return triple.includes("linux") && Deno.build.os !== "linux";
+}
+
+function repoRoot(): URL {
+  return new URL("../", import.meta.url);
+}
+
+async function run(cmd: string, args: string[], cwd?: string): Promise<number> {
+  const proc = new Deno.Command(cmd, {
+    args,
+    cwd,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  const { code } = await proc.output();
+  return code;
+}
+
+async function buildWithCargo(triple: string): Promise<URL> {
+  const crate = rustCrateDir();
+  const code = await run("cargo", [
     "build",
     "--release",
     "--manifest-path",
     new URL("Cargo.toml", crate).pathname,
     "--target",
     triple,
-  ],
-  cwd: crate.pathname,
-  stdout: "inherit",
-  stderr: "inherit",
-});
-const { code } = await cargo.output();
-if (code !== 0) Deno.exit(code);
+  ], crate.pathname);
+  if (code !== 0) Deno.exit(code);
+  return new URL(
+    `target/${triple}/release/${
+      cargoArtifactName(
+        triple.includes("windows")
+          ? "windows"
+          : triple.includes("apple")
+          ? "darwin"
+          : "linux",
+      )
+    }`,
+    crate,
+  );
+}
 
-const artifact = new URL(
-  `target/${triple}/release/${
-    cargoArtifactName(
-      triple.includes("windows")
-        ? "windows"
-        : triple.includes("apple")
-        ? "darwin"
-        : "linux",
-    )
-  }`,
-  crate,
-);
-const dest = new URL(
-  `../prebuilt/${tripleToPrebuilt(triple)}`,
-  crate,
-);
-await Deno.mkdir(new URL(".", dest), { recursive: true });
-await Deno.copyFile(artifact, dest);
-console.log(`wrote ${dest.pathname} (${prebuiltFileName()})`);
+async function buildWithDocker(triple: string): Promise<URL> {
+  const platform = LINUX_DOCKER_PLATFORM[triple];
+  if (!platform) {
+    throw new Error(`no Docker platform for ${triple}`);
+  }
+  const crate = rustCrateDir();
+  const destName = tripleToPrebuilt(triple);
+  const dest = new URL(`../prebuilt/${destName}`, crate);
+  await Deno.mkdir(new URL(".", dest), { recursive: true });
+  const code = await run("docker", [
+    "run",
+    "--rm",
+    "--platform",
+    platform,
+    "-v",
+    `${repoRoot().pathname}:/work`,
+    "-v",
+    "rde-events-cargo-registry:/usr/local/cargo/registry",
+    "-v",
+    "rde-events-cargo-git:/usr/local/cargo/git",
+    "-v",
+    "rde-events-linux-target:/target",
+    "-e",
+    "CARGO_TARGET_DIR=/target",
+    "-w",
+    "/work/native/rde-events",
+    "rust:1-bookworm",
+    "sh",
+    "-c",
+    `cargo build --release && cp /target/release/librde_events.so /work/native/prebuilt/${destName}`,
+  ]);
+  if (code !== 0) Deno.exit(code);
+  return dest;
+}
+
+const triple = parseTarget();
+const artifact = wantsDocker(triple)
+  ? await buildWithDocker(triple)
+  : await buildWithCargo(triple);
+
+if (!wantsDocker(triple)) {
+  const dest = new URL(
+    `../prebuilt/${tripleToPrebuilt(triple)}`,
+    rustCrateDir(),
+  );
+  await Deno.mkdir(new URL(".", dest), { recursive: true });
+  await Deno.copyFile(artifact, dest);
+  console.log(`wrote ${dest.pathname} (${prebuiltFileName()})`);
+} else {
+  console.log(`wrote ${artifact.pathname}`);
+}

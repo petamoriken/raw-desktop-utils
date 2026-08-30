@@ -1,7 +1,6 @@
-//! Windows / Linux placeholders. Same C ABI as the macOS backend.
+//! Windows placeholder. Same C ABI as the macOS / Linux backends.
 //!
 //! TODO(windows): FindWindowW, GetCursorPos, GetAsyncKeyState, WH_GETMESSAGE.
-//! TODO(linux): XQueryPointer / wl_pointer.
 
 use std::ffi::c_void;
 use std::ptr;

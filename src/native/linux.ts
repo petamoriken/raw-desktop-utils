@@ -1,12 +1,12 @@
+import { linuxKeys } from "../keys/linux.ts";
+import { inspectBranded, type InspectFn, kCustomInspect } from "../inspect.ts";
 import {
   emptySnapshot,
   type NativeQueuedEvent,
   type PointerSnapshot,
 } from "../types.ts";
-import { inspectBranded, type InspectFn, kCustomInspect } from "../inspect.ts";
 import { ABI_VERSION, QUEUED_EVENT_BYTES, SNAPSHOT_BYTES } from "./abi.ts";
 import type { NativeBackend } from "./backend.ts";
-import { macKeys } from "../keys/macos.ts";
 import { decodeQueuedEvents, decodeSnapshot } from "./decode.ts";
 import { materializeLibrary } from "./load.ts";
 import { RDE_SYMBOLS, type RdeLibrary } from "./symbols.ts";
@@ -15,8 +15,8 @@ function cstr(text: string): Uint8Array {
   return new TextEncoder().encode(`${text}\0`);
 }
 
-export class MacosBackend implements NativeBackend {
-  readonly os = "darwin";
+export class LinuxBackend implements NativeBackend {
+  readonly os = "linux";
   readonly #dl: RdeLibrary;
 
   constructor(dl: RdeLibrary) {
@@ -53,13 +53,13 @@ export class MacosBackend implements NativeBackend {
     const buf = new Uint8Array(QUEUED_EVENT_BYTES * cap);
     const n = this.#dl.symbols.rde_poll_events(handle, buf, cap);
     if (n <= 0) return [];
-    return decodeQueuedEvents(buf, n, macKeys);
+    return decodeQueuedEvents(buf, n, linuxKeys);
   }
 
   [kCustomInspect](inspect: InspectFn, options?: Deno.InspectOptions): string {
     return inspectBranded(
       #dl in this,
-      "MacosBackend",
+      "LinuxBackend",
       () => ({ os: this.os, abi: this.abiVersion }),
       inspect,
       options,
@@ -67,10 +67,10 @@ export class MacosBackend implements NativeBackend {
   }
 }
 
-export async function loadMacos(): Promise<MacosBackend> {
+export async function loadLinux(): Promise<LinuxBackend> {
   const path = await materializePrebuilt();
   const dl = Deno.dlopen(path, RDE_SYMBOLS);
-  const backend = new MacosBackend(dl);
+  const backend = new LinuxBackend(dl);
   if (backend.abiVersion !== ABI_VERSION) {
     dl.close();
     throw new Error(
@@ -81,6 +81,6 @@ export async function loadMacos(): Promise<MacosBackend> {
 }
 
 async function materializePrebuilt(): Promise<string> {
-  const { darwinPrebuilt } = await import("./prebuilt/darwin.ts");
-  return await materializeLibrary(darwinPrebuilt(), "librde_events.dylib");
+  const { linuxPrebuilt } = await import("./prebuilt/linux.ts");
+  return await materializeLibrary(linuxPrebuilt(), "librde_events.so");
 }

@@ -1,19 +1,23 @@
 /**
- * Linux-only entry. The backend is not implemented yet; importing
- * this path keeps macOS / Windows key tables out of a Linux bundle.
+ * Linux-only entry. Import this from Vite / esbuild when the bundle
+ * should not contain macOS or Windows backends:
+ *
+ *   import { attach } from "raw-desktop-events/linux";
  */
+import { loadLinux } from "../native/linux.ts";
 import { NativeUnsupportedError } from "../native/backend.ts";
-import type { InputSession } from "../session.ts";
+import { attachWith, type InputSession } from "../session.ts";
 import type { AttachOptions, DesktopWindow } from "../types.ts";
 
-export function attach(
-  _win: DesktopWindow,
-  _options?: AttachOptions,
+export async function attach(
+  win: DesktopWindow,
+  options: AttachOptions = {},
 ): Promise<InputSession> {
-  return Promise.reject(
-    new NativeUnsupportedError(
+  if (Deno.build.os !== "linux") {
+    throw new NativeUnsupportedError(
       "linux",
-      "Poll XQueryPointer (and later wl_pointer); see native/rde-events/src/stub.rs.",
-    ),
-  );
+      "The X11 helper must be loaded on Linux.",
+    );
+  }
+  return attachWith(await loadLinux(), win, options);
 }

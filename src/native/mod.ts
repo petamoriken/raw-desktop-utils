@@ -20,11 +20,10 @@ async function openBackend(): Promise<NativeBackend> {
         "windows",
         "Poll GetCursorPos / GetAsyncKeyState and hook WH_GETMESSAGE; see native/rde-events/src/stub.rs.",
       );
-    case "linux":
-      throw new NativeUnsupportedError(
-        "linux",
-        "Poll XQueryPointer (and later wl_pointer); see native/rde-events/src/stub.rs.",
-      );
+    case "linux": {
+      const { loadLinux } = await import("./linux.ts");
+      return await loadLinux();
+    }
     default:
       throw new NativeUnsupportedError(Deno.build.os);
   }

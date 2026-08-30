@@ -8,8 +8,9 @@ and the rest of the UI Events model are missing or unusable. This library reads
 the OS pointer (and queued click / wheel / key events) through FFI and
 synthesizes the same event shapes a browser would dispatch.
 
-macOS is implemented. Windows and Linux export the same native ABI but are not
-implemented yet — see the stubs in `native/rde-events/src/stub.rs`.
+macOS (AppKit) and Linux (X11) are implemented. Windows still uses the stub in
+`native/rde-events/src/stub.rs`. Linux `.so` files are built with Docker when
+the host is not Linux (`deno task build:native:linux`).
 
 ## Install
 
@@ -99,8 +100,10 @@ those machines.
 
 ```sh
 deno task build:native
-# optional:
 deno task build:native -- --target aarch64-apple-darwin
+deno task build:native:linux
+# or, for x86_64 Linux from a Mac:
+deno task build:native -- --target x86_64-unknown-linux-gnu
 ```
 
 That writes `native/prebuilt/<os>-<arch>.{dylib,dll,so}`. Runtime code embeds
