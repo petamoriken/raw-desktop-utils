@@ -76,6 +76,10 @@ take `--allow-run`.
   the window's thread (the analogue of the macOS local monitor). It only reads
   messages when `wParam == PM_REMOVE`, otherwise a `PeekMessage` without
   `PM_REMOVE` reports them twice.
+- Close a native audio sink you opened. `AudioContext` only closes a sink it
+  created itself, and a leaked one takes the process down with an access
+  violation: Deno unloads the library at teardown while the audio callback is
+  still running inside it.
 - Split OS key maps (`src/keys/{macos,windows,linux}.ts`). The decoder takes a
   `KeyTranslator`; it must not import a macOS table. Bundlers should import
   `@petamoriken/raw-desktop-utils/macos` (or `/windows`, `/linux`) so unused

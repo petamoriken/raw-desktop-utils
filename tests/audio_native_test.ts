@@ -11,12 +11,19 @@ Deno.test({
     if (!sink) {
       return;
     }
-    sink.refresh();
-    assertEquals(sink.sampleRate > 0, true);
-    assertEquals(sink.channels > 0, true);
-    const ctx = new AudioContext({ sampleRate: sink.sampleRate }, sink);
-    await ctx.resume();
-    assertEquals(ctx.state, "running");
-    await ctx.close();
+    try {
+      sink.refresh();
+      assertEquals(sink.sampleRate > 0, true);
+      assertEquals(sink.channels > 0, true);
+      const ctx = new AudioContext({ sampleRate: sink.sampleRate }, sink);
+      await ctx.resume();
+      assertEquals(ctx.state, "running");
+      await ctx.close();
+    } finally {
+      // The context did not open this sink, so it will not close it. Leaving
+      // the device running takes the process down: Deno unloads the library at
+      // isolate teardown while the audio callback is still inside it.
+      sink.close();
+    }
   },
 });
