@@ -1,8 +1,8 @@
 # AGENTS.md
 
 Utilities for `deno desktop` raw windows (input session, DOM-shaped events,
-requestAnimationFrame). Intended for JSR. Comments, commit messages, and this
-file are English.
+requestAnimationFrame) plus a standalone Web Audio subset. Intended for JSR.
+Comments, commit messages, and this file are English.
 
 ## Commands
 
@@ -28,19 +28,24 @@ take `--allow-run`.
   `InputSession`, `Screen`, DOM event classes. `requestAnimationFrame` /
   `cancelAnimationFrame` live on the session `attach` returns, along with
   `devicePixelRatio`, `screenX` / `screenY`, `innerWidth` / `innerHeight`,
-  `outerWidth` / `outerHeight`, and `screen`. Do not export key tables, inspect
-  symbols, or native internals.
+  `outerWidth` / `outerHeight`, and `screen`. Audio (`AudioContext` and nodes)
+  is a standalone `mod.ts` export, not on `InputSession`. Do not export key
+  tables, inspect symbols, or native internals.
+- Web Audio lives in TypeScript (`src/audio/`). The native helper is a PCM sink
+  (`rdu_audio_*`, cpal + lock-free ring). Quantum size comes from
+  `AudioContextOptions.renderSizeHint` / `renderQuantumSize` (default 128).
+  After changing `native/rdu/src/audio.rs`, rebuild the prebuilt. ABI is 3.
 - `InputSession.poll()` diffs a native snapshot plus a queued event list into
   Pointer / Mouse / Wheel / Keyboard events. Listeners go on the **session**,
   not `BrowserWindow` (that source can double-fire).
 - Coordinates are content-view logical pixels, **top-left** origin (`clientX` /
   `clientY`), in the same space as `window.getSize()`.
-- Native helper is the Rust cdylib `native/rde-events`. macOS is AppKit
-  (`macos.rs`); Linux dispatches like laufey_winit (`WAYLAND_DISPLAY` set →
-  Wayland in `linux/wayland.rs`, else X11 via `x11rb` in `linux/x11.rs`);
-  Windows is Win32 (`windows.rs`, `windows-sys`). `stub.rs` is now only the
-  fallback for other targets. Linux prebuilts are produced in Docker so they can
-  be built on a Mac. Wayland cannot list other clients: pass `options.native` /
+- Native helper is the Rust cdylib `native/rdu`. macOS is AppKit (`macos.rs`);
+  Linux dispatches like laufey_winit (`WAYLAND_DISPLAY` set → Wayland in
+  `linux/wayland.rs`, else X11 via `x11rb` in `linux/x11.rs`); Windows is Win32
+  (`windows.rs`, `windows-sys`). `stub.rs` is now only the fallback for other
+  targets. Linux prebuilts are produced in Docker so they can be built on a Mac.
+  Wayland cannot list other clients: pass `options.native` /
   `getNativeWindow().windowHandle` (and `displayHandle`).
 - Runtime always loads `native/prebuilt/<os>-<arch>.*` (embedded as bytes,
   written to `TMPDIR`). It does not invoke `cargo`. JSR `publish.include` is
@@ -48,9 +53,9 @@ take `--allow-run`.
 
 ## Hard rules
 
-- After changing `native/rde-events`, run `deno task build:native -- build` and
-  commit the updated prebuilt. A same-sized cache file in `TMPDIR` is not proof
-  it is current (path includes a checksum).
+- After changing `native/rdu`, run `deno task build:native -- build` and commit
+  the updated prebuilt. A same-sized cache file in `TMPDIR` is not proof it is
+  current (path includes a checksum).
 - On macOS, stay in screen space. Cursor Y is `NSMaxY(viewOnScreen) - screen.y`.
   Do not use `convertPoint` or `isFlipped` on winit views; those invert hit
   tests.

@@ -9,7 +9,7 @@ import type { NativeBackend } from "./backend.ts";
 import { macKeys } from "../keys/macos.ts";
 import { decodeQueuedEvents, decodeSnapshot } from "./decode.ts";
 import { materializeLibrary } from "./load.ts";
-import { RDE_SYMBOLS, type RdeLibrary } from "./symbols.ts";
+import { RDU_SYMBOLS, type RduLibrary } from "./symbols.ts";
 
 function cstr(text: string): Uint8Array {
   return new TextEncoder().encode(`${text}\0`);
@@ -17,41 +17,41 @@ function cstr(text: string): Uint8Array {
 
 export class MacosBackend implements NativeBackend {
   readonly os = "darwin";
-  readonly #dl: RdeLibrary;
+  readonly #dl: RduLibrary;
 
-  constructor(dl: RdeLibrary) {
+  constructor(dl: RduLibrary) {
     this.#dl = dl;
   }
 
   get abiVersion(): number {
-    return this.#dl.symbols.rde_abi_version();
+    return this.#dl.symbols.rdu_abi_version();
   }
 
   findWindow(title: string): Deno.PointerValue {
-    return this.#dl.symbols.rde_find_window(cstr(title));
+    return this.#dl.symbols.rdu_find_window(cstr(title));
   }
 
   findFrontWindow(): Deno.PointerValue {
-    return this.#dl.symbols.rde_find_front_window();
+    return this.#dl.symbols.rdu_find_front_window();
   }
 
   attach(handle: Deno.PointerValue, _display?: Deno.PointerValue): boolean {
-    return this.#dl.symbols.rde_attach(handle) === 1;
+    return this.#dl.symbols.rdu_attach(handle) === 1;
   }
 
   detach(handle: Deno.PointerValue): void {
-    this.#dl.symbols.rde_detach(handle);
+    this.#dl.symbols.rdu_detach(handle);
   }
 
   snapshot(handle: Deno.PointerValue): PointerSnapshot {
     const buf = new Uint8Array(SNAPSHOT_BYTES);
-    if (!this.#dl.symbols.rde_snapshot(handle, buf)) return emptySnapshot();
+    if (!this.#dl.symbols.rdu_snapshot(handle, buf)) return emptySnapshot();
     return decodeSnapshot(buf);
   }
 
   pollEvents(handle: Deno.PointerValue, cap = 64): NativeQueuedEvent[] {
     const buf = new Uint8Array(QUEUED_EVENT_BYTES * cap);
-    const n = this.#dl.symbols.rde_poll_events(handle, buf, cap);
+    const n = this.#dl.symbols.rdu_poll_events(handle, buf, cap);
     if (n <= 0) return [];
     return decodeQueuedEvents(buf, n, macKeys);
   }
@@ -69,7 +69,7 @@ export class MacosBackend implements NativeBackend {
 
 export async function loadMacos(): Promise<MacosBackend> {
   const path = await materializePrebuilt();
-  const dl = Deno.dlopen(path, RDE_SYMBOLS);
+  const dl = Deno.dlopen(path, RDU_SYMBOLS);
   const backend = new MacosBackend(dl);
   if (backend.abiVersion !== ABI_VERSION) {
     dl.close();
@@ -82,5 +82,5 @@ export async function loadMacos(): Promise<MacosBackend> {
 
 async function materializePrebuilt(): Promise<string> {
   const { darwinPrebuilt } = await import("./prebuilt/darwin.ts");
-  return await materializeLibrary(darwinPrebuilt(), "librde_events.dylib");
+  return await materializeLibrary(darwinPrebuilt(), "librdu.dylib");
 }

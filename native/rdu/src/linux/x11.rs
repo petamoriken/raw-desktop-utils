@@ -341,7 +341,7 @@ pub(crate) unsafe fn find_window(utf8_title: *const c_char) -> *mut c_void {
     let want = unsafe { CStr::from_ptr(utf8_title) }
         .to_string_lossy()
         .into_owned();
-    let mut state = STATE.lock().expect("rde state");
+    let mut state = STATE.lock().expect("rdu state");
     if connect(&mut state).is_none() {
         return ptr::null_mut();
     }
@@ -354,7 +354,7 @@ pub(crate) unsafe fn find_window(utf8_title: *const c_char) -> *mut c_void {
 }
 
 pub(crate) fn find_front_window() -> *mut c_void {
-    let mut state = STATE.lock().expect("rde state");
+    let mut state = STATE.lock().expect("rdu state");
     if connect(&mut state).is_none() {
         return ptr::null_mut();
     }
@@ -370,7 +370,7 @@ pub(crate) fn attach(view_ptr: *mut c_void) -> i32 {
     let Some(win) = window_from_ptr(view_ptr) else {
         return 0;
     };
-    let mut state = STATE.lock().expect("rde state");
+    let mut state = STATE.lock().expect("rdu state");
     if connect(&mut state).is_none() {
         return 0;
     }
@@ -396,7 +396,7 @@ pub(crate) fn attach(view_ptr: *mut c_void) -> i32 {
 }
 
 pub(crate) fn detach(view_ptr: *mut c_void) {
-    let mut state = STATE.lock().expect("rde state");
+    let mut state = STATE.lock().expect("rdu state");
     if state.attached == window_from_ptr(view_ptr) || view_ptr.is_null() {
         state.attached = None;
         state.queue.clear();
@@ -413,7 +413,7 @@ pub(crate) unsafe fn snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 
     let Some(win) = window_from_ptr(view_ptr) else {
         return 0;
     };
-    let mut state = STATE.lock().expect("rde state");
+    let mut state = STATE.lock().expect("rdu state");
     drain_events(&mut state);
     let Some(conn) = state.conn.as_ref() else {
         return 0;
@@ -480,7 +480,7 @@ pub(crate) unsafe fn poll_events(
     if buf.is_null() || cap <= 0 {
         return 0;
     }
-    let mut state = STATE.lock().expect("rde state");
+    let mut state = STATE.lock().expect("rdu state");
     drain_events(&mut state);
     let n = state.queue.len().min(cap as usize);
     for i in 0..n {

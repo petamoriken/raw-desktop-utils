@@ -16,12 +16,12 @@ fn use_wayland(view_ptr: *mut c_void) -> bool {
 }
 
 #[no_mangle]
-pub extern "C" fn rde_abi_version() -> i32 {
+pub extern "C" fn rdu_abi_version() -> i32 {
     crate::abi::ABI_VERSION
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rde_find_window(utf8_title: *const c_char) -> *mut c_void {
+pub unsafe extern "C" fn rdu_find_window(utf8_title: *const c_char) -> *mut c_void {
     if wayland::prefer_wayland() {
         unsafe { wayland::find_window(utf8_title) }
     } else {
@@ -30,7 +30,7 @@ pub unsafe extern "C" fn rde_find_window(utf8_title: *const c_char) -> *mut c_vo
 }
 
 #[no_mangle]
-pub extern "C" fn rde_find_front_window() -> *mut c_void {
+pub extern "C" fn rdu_find_front_window() -> *mut c_void {
     if wayland::prefer_wayland() {
         wayland::find_front_window()
     } else {
@@ -39,13 +39,13 @@ pub extern "C" fn rde_find_front_window() -> *mut c_void {
 }
 
 #[no_mangle]
-pub extern "C" fn rde_set_display(display_ptr: *mut c_void) -> i32 {
+pub extern "C" fn rdu_set_display(display_ptr: *mut c_void) -> i32 {
     wayland::set_display(display_ptr);
     1
 }
 
 #[no_mangle]
-pub extern "C" fn rde_attach(view_ptr: *mut c_void) -> i32 {
+pub extern "C" fn rdu_attach(view_ptr: *mut c_void) -> i32 {
     if use_wayland(view_ptr) {
         wayland::attach(view_ptr)
     } else {
@@ -54,7 +54,7 @@ pub extern "C" fn rde_attach(view_ptr: *mut c_void) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn rde_detach(view_ptr: *mut c_void) {
+pub extern "C" fn rdu_detach(view_ptr: *mut c_void) {
     if use_wayland(view_ptr) {
         wayland::detach(view_ptr);
     } else {
@@ -63,7 +63,7 @@ pub extern "C" fn rde_detach(view_ptr: *mut c_void) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 {
+pub unsafe extern "C" fn rdu_snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 {
     if use_wayland(view_ptr) {
         unsafe { wayland::snapshot(view_ptr, out) }
     } else {
@@ -72,7 +72,7 @@ pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rde_poll_events(
+pub unsafe extern "C" fn rdu_poll_events(
     view_ptr: *mut c_void,
     buf: *mut crate::abi::QueuedEvent,
     cap: i32,

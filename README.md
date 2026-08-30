@@ -97,14 +97,52 @@ From a live snapshot plus the native queue:
 - `wheel`
 - `keydown` / `keyup`
 
-The public exports are `attach`, `InputSession`, `Screen`, and the DOM
-constructors (`PointerEvent`, `MouseEvent`, `WheelEvent`, `KeyboardEvent`,
-`UIEvent`). Platform key tables and inspect internals stay private.
+The public exports are `attach`, `InputSession`, `Screen`, the DOM constructors
+(`PointerEvent`, `MouseEvent`, `WheelEvent`, `KeyboardEvent`, `UIEvent`), and a
+Web Audio subset (`AudioContext`, `AudioBuffer`, nodes). Platform key tables and
+inspect internals stay private.
+
+## Audio
+
+`AudioContext` is a standalone export. It does not need `attach()` or a window.
+`new AudioContext()` starts `suspended`; `await ctx.resume()` opens the default
+output device. There is no user-gesture gate.
+
+```ts
+import {
+  AudioBuffer,
+  AudioBufferSourceNode,
+  AudioContext,
+} from "jsr:@petamoriken/raw-desktop-utils";
+
+const ctx = new AudioContext({ renderSizeHint: 256 });
+await ctx.resume();
+
+const shot = new AudioBuffer({
+  length: pcm.length,
+  numberOfChannels: 1,
+  sampleRate: ctx.sampleRate,
+});
+shot.copyToChannel(pcm, 0);
+const src = new AudioBufferSourceNode(ctx, { buffer: shot });
+src.connect(ctx.destination);
+src.start();
+```
+
+`renderSizeHint` is the Web Audio 1.1 option (`"default"` / omitted → 128, a
+positive integer asks for that quantum, `"hardware"` lets the implementation
+pick). The chosen size is `ctx.renderQuantumSize` and stays fixed. Numeric hints
+must be in `[1, floor(6 * sampleRate)]`.
+
+v1 nodes: `AudioBufferSourceNode`, `GainNode`, `OscillatorNode`,
+`BiquadFilterNode`, `AnalyserNode`, `StereoPannerNode`. Factory methods
+(`createGain`, …) wrap the constructors. There is no `decodeAudioData` yet —
+build an `AudioBuffer` from PCM.
 
 ## Native ABI
 
-The helper is a Rust `cdylib` (`native/rde-events`). macOS is AppKit. Windows is
-Win32: window lookup through `EnumWindows`, live state from `GetCursorPos` /
+The helper is a Rust `cdylib` (`native/rdu`). macOS is AppKit. Windows is Win32:
+window lookup through `EnumWindows`, live state from `GetCursorPos` /
 `GetAsyncKeyState`, and discrete events from a thread-local `WH_GETMESSAGE` hook
 on the window's own thread, so the window procedure is left alone. Linux is X11
 or Wayland (same `WAYLAND_DISPLAY` rule as laufey_winit).

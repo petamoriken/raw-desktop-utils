@@ -9,11 +9,11 @@ import { ABI_VERSION, QUEUED_EVENT_BYTES, SNAPSHOT_BYTES } from "./abi.ts";
 import type { NativeBackend } from "./backend.ts";
 import { decodeQueuedEvents, decodeSnapshot } from "./decode.ts";
 import { materializeLibrary } from "./load.ts";
-import { RDE_SYMBOLS } from "./symbols.ts";
+import { RDU_SYMBOLS } from "./symbols.ts";
 
 const LINUX_SYMBOLS = {
-  ...RDE_SYMBOLS,
-  rde_set_display: { parameters: ["pointer"], result: "i32" },
+  ...RDU_SYMBOLS,
+  rdu_set_display: { parameters: ["pointer"], result: "i32" },
 } as const;
 
 type LinuxLibrary = Deno.DynamicLibrary<typeof LINUX_SYMBOLS>;
@@ -31,35 +31,35 @@ export class LinuxBackend implements NativeBackend {
   }
 
   get abiVersion(): number {
-    return this.#dl.symbols.rde_abi_version();
+    return this.#dl.symbols.rdu_abi_version();
   }
 
   findWindow(title: string): Deno.PointerValue {
-    return this.#dl.symbols.rde_find_window(cstr(title));
+    return this.#dl.symbols.rdu_find_window(cstr(title));
   }
 
   findFrontWindow(): Deno.PointerValue {
-    return this.#dl.symbols.rde_find_front_window();
+    return this.#dl.symbols.rdu_find_front_window();
   }
 
   attach(handle: Deno.PointerValue, display?: Deno.PointerValue): boolean {
-    if (display) this.#dl.symbols.rde_set_display(display);
-    return this.#dl.symbols.rde_attach(handle) === 1;
+    if (display) this.#dl.symbols.rdu_set_display(display);
+    return this.#dl.symbols.rdu_attach(handle) === 1;
   }
 
   detach(handle: Deno.PointerValue): void {
-    this.#dl.symbols.rde_detach(handle);
+    this.#dl.symbols.rdu_detach(handle);
   }
 
   snapshot(handle: Deno.PointerValue): PointerSnapshot {
     const buf = new Uint8Array(SNAPSHOT_BYTES);
-    if (!this.#dl.symbols.rde_snapshot(handle, buf)) return emptySnapshot();
+    if (!this.#dl.symbols.rdu_snapshot(handle, buf)) return emptySnapshot();
     return decodeSnapshot(buf);
   }
 
   pollEvents(handle: Deno.PointerValue, cap = 64): NativeQueuedEvent[] {
     const buf = new Uint8Array(QUEUED_EVENT_BYTES * cap);
-    const n = this.#dl.symbols.rde_poll_events(handle, buf, cap);
+    const n = this.#dl.symbols.rdu_poll_events(handle, buf, cap);
     if (n <= 0) return [];
     return decodeQueuedEvents(buf, n, linuxKeys);
   }
@@ -90,5 +90,5 @@ export async function loadLinux(): Promise<LinuxBackend> {
 
 async function materializePrebuilt(): Promise<string> {
   const { linuxPrebuilt } = await import("./prebuilt/linux.ts");
-  return await materializeLibrary(linuxPrebuilt(), "librde_events.so");
+  return await materializeLibrary(linuxPrebuilt(), "librdu.so");
 }

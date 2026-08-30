@@ -2,4 +2,4 @@
 .deno/
 /tmp/
 *.swp
-native/rde-events/target
+native/rdu/target

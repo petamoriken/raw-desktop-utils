@@ -42,7 +42,7 @@ export async function materializeLibrary(
 }
 
 export function rustCrateDir(): URL {
-  return new URL("../../native/rde-events/", import.meta.url);
+  return new URL("../../native/rdu/", import.meta.url);
 }
 
 /** Host triple used by cargo / rustc, e.g. aarch64-apple-darwin. */
@@ -72,7 +72,7 @@ export function prebuiltFileName(
 }
 
 export function cargoArtifactName(os = Deno.build.os): string {
-  if (os === "windows") return "rde_events.dll";
-  if (os === "darwin") return "librde_events.dylib";
-  return "librde_events.so";
+  if (os === "windows") return "rdu.dll";
+  if (os === "darwin") return "librdu.dylib";
+  return "librdu.so";
 }

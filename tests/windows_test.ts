@@ -14,7 +14,7 @@ Deno.test({
   fn: async () => {
     const native = await loadWindows();
     assertEquals(native.abiVersion, ABI_VERSION);
-    assertEquals(native.findWindow("__rde_no_such_window__"), null);
+    assertEquals(native.findWindow("__rdu_no_such_window__"), null);
     const text = Deno.inspect(native);
     assertEquals(text.includes("WindowsBackend"), true);
   },

@@ -5,7 +5,7 @@
 //! do not steal winit's default queue.
 //!
 //! Debian bookworm's libwayland is 1.21, so `wl_proxy_get_display` (1.23)
-//! is not available at link time. Prefer `rde_set_display` / JS
+//! is not available at link time. Prefer `rdu_set_display` / JS
 //! `displayHandle`. Otherwise recover the display from the `wl_proxy`
 //! layout, or `dlsym` the 1.23 accessor when the host library is newer.
 //!
@@ -376,7 +376,7 @@ fn setup(surface: *mut c_void) -> bool {
         keyboard: None,
     };
     let _ = queue.dispatch_pending(&mut input);
-    *STATE.lock().expect("rde wayland") = Some(Wayland {
+    *STATE.lock().expect("rdu wayland") = Some(Wayland {
         conn,
         queue,
         _registry: registry,
@@ -386,7 +386,7 @@ fn setup(surface: *mut c_void) -> bool {
 }
 
 fn dispatch_state() {
-    let mut guard = STATE.lock().expect("rde wayland");
+    let mut guard = STATE.lock().expect("rdu wayland");
     let Some(wl) = guard.as_mut() else {
         return;
     };
@@ -415,7 +415,7 @@ pub(crate) unsafe fn find_window(_utf8_title: *const c_char) -> *mut c_void {
 pub(crate) fn find_front_window() -> *mut c_void {
     STATE
         .lock()
-        .expect("rde wayland")
+        .expect("rdu wayland")
         .as_ref()
         .map(|wl| wl.input.attached)
         .unwrap_or(ptr::null_mut())
@@ -429,7 +429,7 @@ pub(crate) fn attach(view_ptr: *mut c_void) -> i32 {
 }
 
 pub(crate) fn detach(view_ptr: *mut c_void) {
-    let mut guard = STATE.lock().expect("rde wayland");
+    let mut guard = STATE.lock().expect("rdu wayland");
     if guard
         .as_ref()
         .is_some_and(|wl| wl.input.attached == view_ptr || view_ptr.is_null())
@@ -443,7 +443,7 @@ pub(crate) unsafe fn snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 
         return 0;
     }
     dispatch_state();
-    let guard = STATE.lock().expect("rde wayland");
+    let guard = STATE.lock().expect("rdu wayland");
     let Some(wl) = guard.as_ref() else {
         unsafe {
             *out = Snapshot::empty();
@@ -503,7 +503,7 @@ pub(crate) unsafe fn poll_events(
         return 0;
     }
     dispatch_state();
-    let mut guard = STATE.lock().expect("rde wayland");
+    let mut guard = STATE.lock().expect("rdu wayland");
     let Some(wl) = guard.as_mut() else {
         return 0;
     };

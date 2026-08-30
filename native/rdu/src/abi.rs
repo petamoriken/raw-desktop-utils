@@ -1,4 +1,4 @@
-pub const ABI_VERSION: i32 = 2;
+pub const ABI_VERSION: i32 = 3;
 
 pub const FLAG_INSIDE: u32 = 1;
 pub const FLAG_FOCUSED: u32 = 2;

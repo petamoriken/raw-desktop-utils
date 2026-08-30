@@ -1,6 +1,7 @@
 //! C ABI for raw-desktop-utils. Built as a cdylib and loaded via Deno FFI.
 
 mod abi;
+mod audio;
 
 #[cfg(target_os = "macos")]
 mod macos;

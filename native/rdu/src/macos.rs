@@ -274,7 +274,7 @@ fn event_for_attached(event: &NSEvent, view: &NSView, mtm: MainThreadMarker) -> 
 }
 
 fn push(ev: QueuedEvent) {
-    let mut state = STATE.lock().expect("rde state");
+    let mut state = STATE.lock().expect("rdu state");
     let q = &mut state.queue;
     if q.count == QUEUE_CAP {
         q.head = (q.head + 1) % QUEUE_CAP;
@@ -286,7 +286,7 @@ fn push(ev: QueuedEvent) {
 }
 
 fn fill_pointer_fields(event: &NSEvent, ev: &mut QueuedEvent) {
-    let mut state = STATE.lock().expect("rde state");
+    let mut state = STATE.lock().expect("rdu state");
     ev.pointer_type = pointer_kind(event);
     if ev.pointer_type == PTR_PEN {
         ev.pressure = event.pressure();
@@ -314,7 +314,7 @@ fn handle_event(event: &NSEvent) {
     let Some(mtm) = require_mtm() else {
         return;
     };
-    let attached = STATE.lock().expect("rde state").attached;
+    let attached = STATE.lock().expect("rdu state").attached;
     let Some(view) = as_view(attached) else {
         return;
     };
@@ -410,12 +410,12 @@ fn remove_monitor(state: &mut State) {
 }
 
 #[no_mangle]
-pub extern "C" fn rde_abi_version() -> i32 {
+pub extern "C" fn rdu_abi_version() -> i32 {
     ABI_VERSION
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rde_find_window(utf8_title: *const i8) -> *mut c_void {
+pub unsafe extern "C" fn rdu_find_window(utf8_title: *const i8) -> *mut c_void {
     if utf8_title.is_null() {
         return ptr::null_mut();
     }
@@ -443,7 +443,7 @@ pub unsafe extern "C" fn rde_find_window(utf8_title: *const i8) -> *mut c_void {
 }
 
 #[no_mangle]
-pub extern "C" fn rde_find_front_window() -> *mut c_void {
+pub extern "C" fn rdu_find_front_window() -> *mut c_void {
     let result = Arc::new(AtomicPtr::new(ptr::null_mut()));
     let out = result.clone();
     on_main(move || {
@@ -465,7 +465,7 @@ pub extern "C" fn rde_find_front_window() -> *mut c_void {
 }
 
 #[no_mangle]
-pub extern "C" fn rde_attach(view_ptr: *mut c_void) -> i32 {
+pub extern "C" fn rdu_attach(view_ptr: *mut c_void) -> i32 {
     if view_ptr.is_null() {
         return 0;
     }
@@ -475,7 +475,7 @@ pub extern "C" fn rde_attach(view_ptr: *mut c_void) -> i32 {
         if as_view(view_ptr).is_none() {
             return;
         }
-        let mut state = STATE.lock().expect("rde state");
+        let mut state = STATE.lock().expect("rdu state");
         state.attached = view_ptr;
         state.queue.head = 0;
         state.queue.count = 0;
@@ -486,9 +486,9 @@ pub extern "C" fn rde_attach(view_ptr: *mut c_void) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn rde_detach(view_ptr: *mut c_void) {
+pub extern "C" fn rdu_detach(view_ptr: *mut c_void) {
     on_main(move || {
-        let mut state = STATE.lock().expect("rde state");
+        let mut state = STATE.lock().expect("rdu state");
         if state.attached == view_ptr || view_ptr.is_null() {
             state.attached = ptr::null_mut();
             remove_monitor(&mut state);
@@ -499,7 +499,7 @@ pub extern "C" fn rde_detach(view_ptr: *mut c_void) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 {
+pub unsafe extern "C" fn rdu_snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 {
     if view_ptr.is_null() || out.is_null() {
         return 0;
     }
@@ -519,7 +519,7 @@ pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
         let Some(mapped) = map_screen(&view, screen, true, mtm) else {
             return;
         };
-        let tablet = STATE.lock().expect("rde state").tablet;
+        let tablet = STATE.lock().expect("rdu state").tablet;
         let mut snap = Snapshot {
             flags: FLAG_VALID
                 | if mapped.inside { FLAG_INSIDE } else { 0 }
@@ -553,7 +553,7 @@ pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rde_poll_events(
+pub unsafe extern "C" fn rdu_poll_events(
     _view_ptr: *mut c_void,
     buf: *mut QueuedEvent,
     cap: i32,
@@ -561,7 +561,7 @@ pub unsafe extern "C" fn rde_poll_events(
     if buf.is_null() || cap <= 0 {
         return 0;
     }
-    let mut state = STATE.lock().expect("rde state");
+    let mut state = STATE.lock().expect("rdu state");
     let n = state.queue.count.min(cap as usize);
     for i in 0..n {
         let idx = (state.queue.head + i) % QUEUE_CAP;

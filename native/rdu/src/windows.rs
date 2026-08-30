@@ -87,7 +87,7 @@ fn hwnd_from_ptr(ptr: *mut c_void) -> Option<HWND> {
 }
 
 fn attached_hwnd() -> Option<HWND> {
-    let handle = STATE.lock().expect("rde state").attached;
+    let handle = STATE.lock().expect("rdu state").attached;
     if handle == 0 {
         None
     } else {
@@ -496,7 +496,7 @@ fn handle_message(msg: &MSG) {
                 ev.screen_x = mapped.screen_x;
                 ev.screen_y = mapped.screen_y;
             }
-            push(&mut STATE.lock().expect("rde state"), ev);
+            push(&mut STATE.lock().expect("rdu state"), ev);
             return;
         }
         _ => return,
@@ -507,7 +507,7 @@ fn handle_message(msg: &MSG) {
     ev.client_y = mapped.client_y;
     ev.screen_x = mapped.screen_x;
     ev.screen_y = mapped.screen_y;
-    push(&mut STATE.lock().expect("rde state"), ev);
+    push(&mut STATE.lock().expect("rdu state"), ev);
 }
 
 unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -516,7 +516,7 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     if code >= 0 && wparam as u32 == PM_REMOVE && !(lparam as *const MSG).is_null() {
         handle_message(unsafe { &*(lparam as *const MSG) });
     }
-    let hook = STATE.lock().expect("rde state").hook as HHOOK;
+    let hook = STATE.lock().expect("rdu state").hook as HHOOK;
     unsafe { CallNextHookEx(hook, code, wparam, lparam) }
 }
 
@@ -555,12 +555,12 @@ unsafe extern "system" fn enum_first_visible(hwnd: HWND, lparam: LPARAM) -> i32 
 }
 
 #[no_mangle]
-pub extern "C" fn rde_abi_version() -> i32 {
+pub extern "C" fn rdu_abi_version() -> i32 {
     ABI_VERSION
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rde_find_window(utf8_title: *const c_char) -> *mut c_void {
+pub unsafe extern "C" fn rdu_find_window(utf8_title: *const c_char) -> *mut c_void {
     if utf8_title.is_null() {
         return ptr::null_mut();
     }
@@ -576,7 +576,7 @@ pub unsafe extern "C" fn rde_find_window(utf8_title: *const c_char) -> *mut c_vo
 }
 
 #[no_mangle]
-pub extern "C" fn rde_find_front_window() -> *mut c_void {
+pub extern "C" fn rdu_find_front_window() -> *mut c_void {
     let foreground = unsafe { GetForegroundWindow() };
     if !foreground.is_null() && owned_by_this_process(foreground) {
         return foreground as *mut c_void;
@@ -597,7 +597,7 @@ fn remove_hook(state: &mut State) {
 }
 
 #[no_mangle]
-pub extern "C" fn rde_attach(view_ptr: *mut c_void) -> i32 {
+pub extern "C" fn rdu_attach(view_ptr: *mut c_void) -> i32 {
     let Some(hwnd) = hwnd_from_ptr(view_ptr) else {
         return 0;
     };
@@ -608,7 +608,7 @@ pub extern "C" fn rde_attach(view_ptr: *mut c_void) -> i32 {
     if thread == 0 {
         return 0;
     }
-    let mut state = STATE.lock().expect("rde state");
+    let mut state = STATE.lock().expect("rdu state");
     state.attached = hwnd as isize;
     state.queue.head = 0;
     state.queue.count = 0;
@@ -628,8 +628,8 @@ pub extern "C" fn rde_attach(view_ptr: *mut c_void) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn rde_detach(view_ptr: *mut c_void) {
-    let mut state = STATE.lock().expect("rde state");
+pub extern "C" fn rdu_detach(view_ptr: *mut c_void) {
+    let mut state = STATE.lock().expect("rdu state");
     if !view_ptr.is_null() && state.attached != view_ptr as isize {
         return;
     }
@@ -640,7 +640,7 @@ pub extern "C" fn rde_detach(view_ptr: *mut c_void) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 {
+pub unsafe extern "C" fn rdu_snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 {
     if out.is_null() {
         return 0;
     }
@@ -717,7 +717,7 @@ pub unsafe extern "C" fn rde_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rde_poll_events(
+pub unsafe extern "C" fn rdu_poll_events(
     _view_ptr: *mut c_void,
     buf: *mut QueuedEvent,
     cap: i32,
@@ -725,7 +725,7 @@ pub unsafe extern "C" fn rde_poll_events(
     if buf.is_null() || cap <= 0 {
         return 0;
     }
-    let mut state = STATE.lock().expect("rde state");
+    let mut state = STATE.lock().expect("rdu state");
     let n = state.queue.count.min(cap as usize);
     for i in 0..n {
         let idx = (state.queue.head + i) % QUEUE_CAP;
