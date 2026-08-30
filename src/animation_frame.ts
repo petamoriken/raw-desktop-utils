@@ -7,24 +7,7 @@ type RafHost = {
 };
 
 const host = globalThis as typeof globalThis & RafHost;
-
 const DEFAULT_HZ = 60;
-
-let nextId = 1;
-const pending = new Map<number, FrameRequestCallback>();
-let scheduled = false;
-let hz = DEFAULT_HZ;
-
-/** Used after attach when the native helper can report the display rate. */
-export function setRefreshRate(framesPerSecond: number): void {
-  if (Number.isFinite(framesPerSecond) && framesPerSecond > 0) {
-    hz = framesPerSecond;
-  }
-}
-
-export function refreshRate(): number {
-  return hz;
-}
 
 function hostRaf(): ((callback: FrameRequestCallback) => number) | undefined {
   const fn = host.requestAnimationFrame;
@@ -36,51 +19,80 @@ function hostCaf(): ((handle: number) => void) | undefined {
   return typeof fn === "function" ? fn.bind(host) : undefined;
 }
 
-function schedule(): void {
-  if (scheduled || pending.size === 0) return;
-  scheduled = true;
-  const period = 1000 / hz;
-  const now = performance.now();
-  const delay = Math.max(0, period - (now % period));
-  setTimeout(flush, delay);
-}
-
-function flush(): void {
-  scheduled = false;
-  const time = performance.now();
-  const callbacks = [...pending.values()];
-  pending.clear();
-  for (const callback of callbacks) {
-    try {
-      callback(time);
-    } catch (error) {
-      queueMicrotask(() => {
-        throw error;
-      });
-    }
-  }
-  if (pending.size > 0) schedule();
-}
-
 /**
- * Queue `callback` for the next display frame. Same contract as the
- * HTML `Window.requestAnimationFrame` method.
+ * Per-session frame pump. Uses the runtime's rAF when present,
+ * otherwise a 60 Hz `setTimeout` polyfill.
  */
-export function requestAnimationFrame(callback: FrameRequestCallback): number {
-  const host = hostRaf();
-  if (host) return host(callback);
-  const id = nextId++;
-  pending.set(id, callback);
-  schedule();
-  return id;
-}
+export class AnimationFrames {
+  #nextId = 1;
+  #pending = new Map<number, FrameRequestCallback>();
+  #hostIds = new Set<number>();
+  #scheduled = false;
+  #hz = DEFAULT_HZ;
+  #closed = false;
 
-/** Cancel a callback previously passed to {@linkcode requestAnimationFrame}. */
-export function cancelAnimationFrame(handle: number): void {
-  const host = hostCaf();
-  if (host) {
-    host(handle);
-    return;
+  request(callback: FrameRequestCallback): number {
+    if (this.#closed) {
+      throw new Error("raw-desktop-events: InputSession is closed");
+    }
+    const raf = hostRaf();
+    if (raf) {
+      const id = raf((time) => {
+        this.#hostIds.delete(id);
+        if (!this.#closed) callback(time);
+      });
+      this.#hostIds.add(id);
+      return id;
+    }
+    const id = this.#nextId++;
+    this.#pending.set(id, callback);
+    this.#schedule();
+    return id;
   }
-  pending.delete(handle);
+
+  cancel(handle: number): void {
+    if (this.#hostIds.delete(handle)) {
+      hostCaf()?.(handle);
+      return;
+    }
+    this.#pending.delete(handle);
+  }
+
+  close(): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    const caf = hostCaf();
+    if (caf) {
+      for (const id of this.#hostIds) caf(id);
+    }
+    this.#hostIds.clear();
+    this.#pending.clear();
+  }
+
+  #schedule(): void {
+    if (this.#scheduled || this.#pending.size === 0 || this.#closed) return;
+    this.#scheduled = true;
+    const period = 1000 / this.#hz;
+    const now = performance.now();
+    const delay = Math.max(0, period - (now % period));
+    setTimeout(() => this.#flush(), delay);
+  }
+
+  #flush(): void {
+    this.#scheduled = false;
+    if (this.#closed) return;
+    const time = performance.now();
+    const callbacks = [...this.#pending.values()];
+    this.#pending.clear();
+    for (const callback of callbacks) {
+      try {
+        callback(time);
+      } catch (error) {
+        queueMicrotask(() => {
+          throw error;
+        });
+      }
+    }
+    if (this.#pending.size > 0) this.#schedule();
+  }
 }

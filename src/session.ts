@@ -1,7 +1,6 @@
 import {
-  cancelAnimationFrame,
+  AnimationFrames,
   type FrameRequestCallback,
-  requestAnimationFrame,
 } from "./animation_frame.ts";
 import type { InputSessionEventMap } from "./event_map.ts";
 import { cloneSynthesized, type SynthesizedEvent } from "./events.ts";
@@ -10,6 +9,8 @@ import { loadNative, type NativeBackend } from "./native/mod.ts";
 import { synthesize } from "./synthesize.ts";
 import type { AttachOptions, DesktopWindow, PointerSnapshot } from "./types.ts";
 import { emptySnapshot } from "./types.ts";
+
+export type { FrameRequestCallback } from "./animation_frame.ts";
 
 const DEFAULT_LOCATE_MS = 500;
 
@@ -23,6 +24,7 @@ export class InputSession extends EventTarget {
   #last: PointerSnapshot = emptySnapshot();
   #closed = false;
   #timer: ReturnType<typeof setInterval> | null = null;
+  #frames = new AnimationFrames();
 
   constructor(
     window: DesktopWindow,
@@ -80,6 +82,7 @@ export class InputSession extends EventTarget {
       clearInterval(this.#timer);
       this.#timer = null;
     }
+    this.#frames.close();
     this.#native.detach(this.#handle);
   }
 
@@ -88,11 +91,12 @@ export class InputSession extends EventTarget {
   }
 
   requestAnimationFrame(callback: FrameRequestCallback): number {
-    return requestAnimationFrame(callback);
+    this.#assertOpen();
+    return this.#frames.request(callback);
   }
 
   cancelAnimationFrame(handle: number): void {
-    cancelAnimationFrame(handle);
+    this.#frames.cancel(handle);
   }
 
   override addEventListener<K extends keyof InputSessionEventMap>(

@@ -4,7 +4,7 @@
  *
  *   deno desktop --allow-ffi --allow-read --allow-write --allow-run --allow-env examples/basic.ts
  */
-import { attach, requestAnimationFrame } from "../mod.ts";
+import { attach } from "../mod.ts";
 
 const TITLE = "raw-desktop-events example";
 
@@ -22,9 +22,9 @@ using input = await attach(win, { title: TITLE });
 
 function frame(_time: number) {
   input.poll();
-  requestAnimationFrame(frame);
+  input.requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+input.requestAnimationFrame(frame);
 
 input.addEventListener("pointermove", (event) => {
   console.log("move", event.clientX, event.clientY, event.buttons);

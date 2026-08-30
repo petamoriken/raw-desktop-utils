@@ -3,10 +3,14 @@
 UI Events and Pointer Events for
 [`deno desktop`](https://docs.deno.com/runtime/desktop/) **raw** mode.
 
-A raw `Deno.BrowserWindow` has no DOM, so `PointerEvent`, `MouseEvent.offsetX`,
-and the rest of the UI Events model are missing or unusable. This library reads
-the OS pointer (and queued click / wheel / key events) through FFI and
-synthesizes the same event shapes a browser would dispatch.
+`attach(window)` returns an `InputSession`. Each `poll()` reads the OS pointer
+and the queued click / wheel / key events through FFI, then dispatches the same
+`PointerEvent` / `MouseEvent` / `WheelEvent` / `KeyboardEvent` shapes a browser
+would. Listen on the **session**, not on `BrowserWindow` (the window can still
+emit incomplete mouse events and double-fire).
+
+Drive the loop with `input.requestAnimationFrame` — the runtime's rAF when it
+exists, otherwise a 60 Hz polyfill. Closing the session cancels pending frames.
 
 macOS (AppKit) and Linux (X11, or Wayland when `WAYLAND_DISPLAY` is set) are
 implemented. Windows still uses the stub in `native/rde-events/src/stub.rs`.
@@ -19,7 +23,7 @@ Intended for [JSR](https://jsr.io). Until it is published, import from the repo
 path:
 
 ```ts
-import { attach, requestAnimationFrame } from "../raw-desktop-events/mod.ts";
+import { attach } from "../raw-desktop-events/mod.ts";
 ```
 
 Vite / esbuild should import a platform subpath so unused OS backends and key
@@ -50,18 +54,15 @@ input.addEventListener("pointerdown", (event) => {
 function frame(_time: number) {
   input.poll();
   game.draw();
-  requestAnimationFrame(frame);
+  input.requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+input.requestAnimationFrame(frame);
 ```
 
 `addEventListener` is typed like the DOM: `"pointermove"` gives a
 `PointerEvent`, `"wheel"` a `WheelEvent`, `"keydown"` a `KeyboardEvent`.
-`requestAnimationFrame` / `cancelAnimationFrame` match the HTML `Window` methods
-(a display-aligned polyfill when the runtime has none).
-
-Listen on the **session**, not on `BrowserWindow`. The window may still emit
-incomplete mouse events; mixing the two sources can double-fire clicks.
+`input.requestAnimationFrame` / `input.cancelAnimationFrame` match the HTML
+`Window` methods.
 
 `attach` options:
 
@@ -90,9 +91,9 @@ From a live snapshot plus the native queue:
 - `wheel`
 - `keydown` / `keyup`
 
-The public exports are the DOM constructors (`PointerEvent`, `MouseEvent`,
-`WheelEvent`, `KeyboardEvent`, `UIEvent`) plus `attach`. Platform key tables and
-inspect internals stay private.
+The public exports are `attach`, `InputSession`, and the DOM constructors
+(`PointerEvent`, `MouseEvent`, `WheelEvent`, `KeyboardEvent`, `UIEvent`).
+Platform key tables and inspect internals stay private.
 
 ## Native ABI
 
