@@ -317,6 +317,7 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
  "wayland-sys",
+ "windows-sys",
  "x11rb",
 ]
 

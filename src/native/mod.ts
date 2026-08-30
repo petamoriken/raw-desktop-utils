@@ -15,11 +15,10 @@ async function openBackend(): Promise<NativeBackend> {
       const { loadMacos } = await import("./macos.ts");
       return await loadMacos();
     }
-    case "windows":
-      throw new NativeUnsupportedError(
-        "windows",
-        "Poll GetCursorPos / GetAsyncKeyState and hook WH_GETMESSAGE; see native/rde-events/src/stub.rs.",
-      );
+    case "windows": {
+      const { loadWindows } = await import("./windows.ts");
+      return await loadWindows();
+    }
     case "linux": {
       const { loadLinux } = await import("./linux.ts");
       return await loadLinux();

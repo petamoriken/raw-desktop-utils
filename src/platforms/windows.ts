@@ -1,19 +1,23 @@
 /**
- * Windows-only entry. The backend is not implemented yet; importing
- * this path keeps macOS / Linux key tables out of a Windows bundle.
+ * Windows-only entry. Import this from Vite / esbuild when the bundle
+ * should not contain macOS or Linux backends or key tables:
+ *
+ *   import { attach } from "@petamoriken/raw-desktop-utils/windows";
  */
 import { NativeUnsupportedError } from "../native/backend.ts";
-import type { InputSession } from "../session.ts";
+import { loadWindows } from "../native/windows.ts";
+import { attachWith, type InputSession } from "../session.ts";
 import type { AttachOptions, DesktopWindow } from "../types.ts";
 
-export function attach(
-  _win: DesktopWindow,
-  _options?: AttachOptions,
+export async function attach(
+  win: DesktopWindow,
+  options: AttachOptions = {},
 ): Promise<InputSession> {
-  return Promise.reject(
-    new NativeUnsupportedError(
+  if (Deno.build.os !== "windows") {
+    throw new NativeUnsupportedError(
       "windows",
-      "Poll GetCursorPos / GetAsyncKeyState and hook WH_GETMESSAGE; see native/rde-events/src/stub.rs.",
-    ),
-  );
+      "The Win32 helper must be loaded on Windows.",
+    );
+  }
+  return attachWith(await loadWindows(), win, options);
 }
