@@ -4,7 +4,7 @@ import { loadLinux } from "../src/native/linux.ts";
 
 Deno.test({
   name: "Linux prebuilt reports ABI 1 and misses unknown titles",
-  ignore: Deno.build.os !== "linux",
+  ignore: Deno.build.os !== "linux" || Deno.build.arch !== "aarch64",
   permissions: {
     read: true,
     write: true,

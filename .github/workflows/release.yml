@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release (e.g. 0.1.0)
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: latest
+          cache: true
+
+      - name: Install Deno dependencies
+        run: deno install --frozen
+
+      - name: Bump version
+        run: deno run --allow-read --allow-write tools/bump_version.ts "${{ inputs.version }}"
+
+      - name: Check
+        run: deno task check
+
+      - name: Publish to JSR
+        run: deno publish --allow-dirty
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "release/v${{ inputs.version }}"
+          git commit -am "chore: bump version to v${{ inputs.version }}"
+          git push origin "release/v${{ inputs.version }}"
+
+      - name: Open version bump PR
+        id: bump_pr
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          url=$(gh pr create \
+            --base main \
+            --head "release/v${{ inputs.version }}" \
+            --title "chore: bump version to v${{ inputs.version }}" \
+            --body "Automated version bump for release v${{ inputs.version }}.")
+
+          echo "number=${url##*/}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for checks to be registered
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          for i in {1..30}; do
+            count=$(gh pr checks "${{ steps.bump_pr.outputs.number }}" \
+              --required --json name --jq 'length' 2>/dev/null || true)
+
+            if [ "$count" -gt 0 ]; then
+              exit 0
+            fi
+
+            echo "Checks are not registered yet ($i/30)"
+            sleep 10
+          done
+
+          echo "Timed out waiting for checks to be registered"
+          exit 1
+
+      - name: Wait for required checks
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: gh pr checks "${{ steps.bump_pr.outputs.number }}" --watch --required
+
+      - name: Merge version bump PR
+        id: bump_merge
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          gh pr merge "${{ steps.bump_pr.outputs.number }}" --squash --delete-branch
+
+          for i in {1..30}; do
+            sha=$(gh pr view "${{ steps.bump_pr.outputs.number }}" \
+              --json mergeCommit --jq '.mergeCommit.oid // empty')
+
+            if [ -n "$sha" ]; then
+              echo "sha=$sha" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "Merge commit is not available yet ($i/30)"
+            sleep 2
+          done
+
+          echo "Timed out waiting for the merge commit"
+          exit 1
+
+      - name: Tag version bump
+        run: |
+          git fetch origin "${{ steps.bump_merge.outputs.sha }}"
+          git tag "v${{ inputs.version }}" "${{ steps.bump_merge.outputs.sha }}"
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ inputs.version }}
+          generate_release_notes: true

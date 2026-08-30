@@ -13,6 +13,10 @@ file are English.
   `--target <triple>`)
 - Linux from macOS/Windows (Docker + `rust:1-bookworm`):
   `deno task build:native -- build --target aarch64-unknown-linux-gnu`
+- CI: `.github/workflows/ci.yml` (`fmt`, `lint`, `test` on Ubuntu and macOS)
+- Release: Actions → Release (workflow_dispatch version). Needs JSR OIDC and
+  `RELEASE_PAT` so the version bump PR can wait on required checks. Bump with
+  `deno run --allow-read --allow-write tools/bump_version.ts <version>`
 
 Runtime needs `--allow-ffi --allow-read --allow-write --allow-env`. Tests also
 take `--allow-run`.
