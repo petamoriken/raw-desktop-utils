@@ -5,10 +5,7 @@
     ".": "./mod.ts",
     "./macos": "./src/platforms/macos.ts",
     "./windows": "./src/platforms/windows.ts",
-    "./linux": "./src/platforms/linux.ts",
-    "./keys/macos": "./src/keys/macos.ts",
-    "./keys/windows": "./src/keys/windows.ts",
-    "./keys/linux": "./src/keys/linux.ts"
+    "./linux": "./src/platforms/linux.ts"
   },
   "license": "MIT",
   "tasks": {

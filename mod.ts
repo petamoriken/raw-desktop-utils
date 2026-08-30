@@ -5,9 +5,9 @@
  * This package samples the OS via FFI and synthesizes the same event
  * shapes a browser would dispatch.
  */
-export { attach, attachWith, InputSession } from "./src/session.ts";
+export { attach, InputSession } from "./src/session.ts";
+export type { InputSessionEventMap } from "./src/event_map.ts";
 export {
-  cloneSynthesized,
   KeyboardEvent,
   MouseEvent,
   PointerEvent,
@@ -15,55 +15,10 @@ export {
   WheelEvent,
 } from "./src/events.ts";
 export type {
-  KeyboardEventInitDict,
-  MouseEventInitDict,
-  PointerEventInitDict,
-  SynthesizedEvent,
-  UIEventInitDict,
-  WheelEventInitDict,
+  KeyboardEventInit,
+  MouseEventInit,
+  PointerEventInit,
+  UIEventInit,
+  WheelEventInit,
 } from "./src/events.ts";
-export { kCustomInspect } from "./src/inspect.ts";
-export {
-  findFrontWindow,
-  findWindow,
-  loadNative,
-  NativeUnsupportedError,
-} from "./src/native/mod.ts";
-export type { NativeBackend } from "./src/native/mod.ts";
-export {
-  bitFromButton,
-  BUTTON_AUXILIARY,
-  BUTTON_BACK,
-  BUTTON_FORWARD,
-  BUTTON_PRIMARY,
-  BUTTON_SECONDARY,
-  buttonFromBit,
-  BUTTONS_AUXILIARY,
-  BUTTONS_BACK,
-  BUTTONS_FORWARD,
-  BUTTONS_NONE,
-  BUTTONS_PRIMARY,
-  BUTTONS_SECONDARY,
-  effectivePressure,
-  emptySnapshot,
-  MOD_ALT,
-  MOD_CTRL,
-  MOD_META,
-  MOD_SHIFT,
-  NATIVE_EVENT_KEY_DOWN,
-  NATIVE_EVENT_KEY_UP,
-  NATIVE_EVENT_POINTER_DOWN,
-  NATIVE_EVENT_POINTER_UP,
-  NATIVE_EVENT_WHEEL,
-  POINTER_TYPE_MOUSE,
-  POINTER_TYPE_PEN,
-  POINTER_TYPE_TOUCH,
-} from "./src/types.ts";
-export type {
-  AttachOptions,
-  DesktopWindow,
-  NativeQueuedEvent,
-  PointerSnapshot,
-  PointerType,
-} from "./src/types.ts";
-export { synthesize } from "./src/synthesize.ts";
+export type { AttachOptions, DesktopWindow } from "./src/types.ts";

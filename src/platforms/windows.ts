@@ -3,14 +3,8 @@
  * this path keeps macOS / Linux key tables out of a Windows bundle.
  */
 import { NativeUnsupportedError } from "../native/backend.ts";
-import type { AttachOptions, DesktopWindow } from "../types.ts";
 import type { InputSession } from "../session.ts";
-
-export {
-  codeFromWinKeyCode,
-  keyFromWin,
-  windowsKeys,
-} from "../keys/windows.ts";
+import type { AttachOptions, DesktopWindow } from "../types.ts";
 
 export function attach(
   _win: DesktopWindow,

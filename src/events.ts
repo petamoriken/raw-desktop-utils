@@ -1,12 +1,12 @@
-import { formatInspect, type InspectFn, kCustomInspect } from "./inspect.ts";
+import { inspectBranded, type InspectFn, kCustomInspect } from "./inspect.ts";
 import type { PointerType } from "./types.ts";
 
-export type UIEventInitDict = EventInit & {
+export type UIEventInit = EventInit & {
   view?: EventTarget | null;
   detail?: number;
 };
 
-export type MouseEventInitDict = UIEventInitDict & {
+export type MouseEventInit = UIEventInit & {
   screenX?: number;
   screenY?: number;
   clientX?: number;
@@ -26,7 +26,7 @@ export type MouseEventInitDict = UIEventInitDict & {
   relatedTarget?: EventTarget | null;
 };
 
-export type PointerEventInitDict = MouseEventInitDict & {
+export type PointerEventInit = MouseEventInit & {
   pointerId?: number;
   width?: number;
   height?: number;
@@ -41,14 +41,14 @@ export type PointerEventInitDict = MouseEventInitDict & {
   isPrimary?: boolean;
 };
 
-export type WheelEventInitDict = MouseEventInitDict & {
+export type WheelEventInit = MouseEventInit & {
   deltaX?: number;
   deltaY?: number;
   deltaZ?: number;
   deltaMode?: number;
 };
 
-export type KeyboardEventInitDict = UIEventInitDict & {
+export type KeyboardEventInit = UIEventInit & {
   key?: string;
   code?: string;
   location?: number;
@@ -69,7 +69,7 @@ export class UIEvent extends Event {
   readonly #view: EventTarget | null;
   readonly #detail: number;
 
-  constructor(type: string, init: UIEventInitDict = {}) {
+  constructor(type: string, init: UIEventInit = {}) {
     super(type, init);
     this.#view = init.view ?? null;
     this.#detail = init.detail ?? 0;
@@ -84,11 +84,13 @@ export class UIEvent extends Event {
   }
 
   [kCustomInspect](inspect: InspectFn, options?: Deno.InspectOptions): string {
-    return formatInspect("UIEvent", this.#inspectFields(), inspect, options);
-  }
-
-  #inspectFields(): Record<string, unknown> {
-    return { type: this.type, view: this.#view, detail: this.#detail };
+    return inspectBranded(
+      #view in this,
+      "UIEvent",
+      () => ({ type: this.type, view: this.#view, detail: this.#detail }),
+      inspect,
+      options,
+    );
   }
 }
 
@@ -111,7 +113,7 @@ export class MouseEvent extends UIEvent {
   readonly #buttons: number;
   readonly #relatedTarget: EventTarget | null;
 
-  constructor(type: string, init: MouseEventInitDict = {}) {
+  constructor(type: string, init: MouseEventInit = {}) {
     super(type, init);
     this.#screenX = init.screenX ?? 0;
     this.#screenY = init.screenY ?? 0;
@@ -204,31 +206,28 @@ export class MouseEvent extends UIEvent {
     inspect: InspectFn,
     options?: Deno.InspectOptions,
   ): string {
-    return formatInspect(
+    return inspectBranded(
+      #clientX in this,
       "MouseEvent",
-      this.#mouseInspectFields(),
+      () => ({
+        type: this.type,
+        clientX: this.#clientX,
+        clientY: this.#clientY,
+        screenX: this.#screenX,
+        screenY: this.#screenY,
+        button: this.#button,
+        buttons: this.#buttons,
+        movementX: this.#movementX,
+        movementY: this.#movementY,
+        ctrlKey: this.#ctrlKey,
+        shiftKey: this.#shiftKey,
+        altKey: this.#altKey,
+        metaKey: this.#metaKey,
+        detail: this.detail,
+      }),
       inspect,
       options,
     );
-  }
-
-  #mouseInspectFields(): Record<string, unknown> {
-    return {
-      type: this.type,
-      clientX: this.#clientX,
-      clientY: this.#clientY,
-      screenX: this.#screenX,
-      screenY: this.#screenY,
-      button: this.#button,
-      buttons: this.#buttons,
-      movementX: this.#movementX,
-      movementY: this.#movementY,
-      ctrlKey: this.#ctrlKey,
-      shiftKey: this.#shiftKey,
-      altKey: this.#altKey,
-      metaKey: this.#metaKey,
-      detail: this.detail,
-    };
   }
 }
 
@@ -246,7 +245,7 @@ export class PointerEvent extends MouseEvent {
   readonly #pointerType: PointerType;
   readonly #isPrimary: boolean;
 
-  constructor(type: string, init: PointerEventInitDict = {}) {
+  constructor(type: string, init: PointerEventInit = {}) {
     super(type, init);
     this.#pointerId = init.pointerId ?? 1;
     this.#width = init.width ?? 1;
@@ -311,9 +310,10 @@ export class PointerEvent extends MouseEvent {
     inspect: InspectFn,
     options?: Deno.InspectOptions,
   ): string {
-    return formatInspect(
+    return inspectBranded(
+      #pointerId in this,
       "PointerEvent",
-      {
+      () => ({
         type: this.type,
         pointerId: this.#pointerId,
         pointerType: this.#pointerType,
@@ -328,7 +328,7 @@ export class PointerEvent extends MouseEvent {
         twist: this.#twist,
         movementX: this.movementX,
         movementY: this.movementY,
-      },
+      }),
       inspect,
       options,
     );
@@ -341,7 +341,7 @@ export class WheelEvent extends MouseEvent {
   readonly #deltaZ: number;
   readonly #deltaMode: number;
 
-  constructor(type: string, init: WheelEventInitDict = {}) {
+  constructor(type: string, init: WheelEventInit = {}) {
     super(type, { ...init, button: init.button ?? 0 });
     this.#deltaX = init.deltaX ?? 0;
     this.#deltaY = init.deltaY ?? 0;
@@ -370,9 +370,10 @@ export class WheelEvent extends MouseEvent {
     inspect: InspectFn,
     options?: Deno.InspectOptions,
   ): string {
-    return formatInspect(
+    return inspectBranded(
+      #deltaX in this,
       "WheelEvent",
-      {
+      () => ({
         type: this.type,
         clientX: this.clientX,
         clientY: this.clientY,
@@ -384,7 +385,7 @@ export class WheelEvent extends MouseEvent {
         shiftKey: this.shiftKey,
         altKey: this.altKey,
         metaKey: this.metaKey,
-      },
+      }),
       inspect,
       options,
     );
@@ -403,7 +404,7 @@ export class KeyboardEvent extends UIEvent {
   readonly #isComposing: boolean;
   readonly #keyCode: number;
 
-  constructor(type: string, init: KeyboardEventInitDict = {}) {
+  constructor(type: string, init: KeyboardEventInit = {}) {
     super(type, init);
     this.#key = init.key ?? "";
     this.#code = init.code ?? "";
@@ -468,9 +469,10 @@ export class KeyboardEvent extends UIEvent {
     inspect: InspectFn,
     options?: Deno.InspectOptions,
   ): string {
-    return formatInspect(
+    return inspectBranded(
+      #key in this,
       "KeyboardEvent",
-      {
+      () => ({
         type: this.type,
         key: this.#key,
         code: this.#code,
@@ -481,7 +483,7 @@ export class KeyboardEvent extends UIEvent {
         shiftKey: this.#shiftKey,
         altKey: this.#altKey,
         metaKey: this.#metaKey,
-      },
+      }),
       inspect,
       options,
     );
@@ -529,7 +531,7 @@ export function cloneSynthesized(event: SynthesizedEvent): SynthesizedEvent {
   return new MouseEvent(event.type, copyMouse(event));
 }
 
-function copyMouse(event: MouseEvent): MouseEventInitDict {
+function copyMouse(event: MouseEvent): MouseEventInit {
   return {
     bubbles: event.bubbles,
     cancelable: event.cancelable,
@@ -555,7 +557,7 @@ function copyMouse(event: MouseEvent): MouseEventInitDict {
   };
 }
 
-function copyPointer(event: PointerEvent): PointerEventInitDict {
+function copyPointer(event: PointerEvent): PointerEventInit {
   return {
     ...copyMouse(event),
     pointerId: event.pointerId,

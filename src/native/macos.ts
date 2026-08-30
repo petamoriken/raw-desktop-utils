@@ -3,7 +3,7 @@ import {
   type NativeQueuedEvent,
   type PointerSnapshot,
 } from "../types.ts";
-import { formatInspect, type InspectFn, kCustomInspect } from "../inspect.ts";
+import { inspectBranded, type InspectFn, kCustomInspect } from "../inspect.ts";
 import { ABI_VERSION, QUEUED_EVENT_BYTES, SNAPSHOT_BYTES } from "./abi.ts";
 import type { NativeBackend } from "./backend.ts";
 import { macKeys } from "../keys/macos.ts";
@@ -66,12 +66,10 @@ export class MacosBackend implements NativeBackend {
   }
 
   [kCustomInspect](inspect: InspectFn, options?: Deno.InspectOptions): string {
-    return formatInspect(
+    return inspectBranded(
+      #dl in this,
       "MacosBackend",
-      {
-        os: this.os,
-        abi: this.abiVersion,
-      },
+      () => ({ os: this.os, abi: this.abiVersion }),
       inspect,
       options,
     );

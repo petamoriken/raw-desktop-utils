@@ -12,9 +12,9 @@ Deno.test("windows and linux platform entries reject with NativeUnsupportedError
   await assertRejects(() => attachLinux(win), NativeUnsupportedError);
 });
 
-Deno.test("macos platform module exports attach without pulling stubs", async () => {
+Deno.test("macos platform module exports attach", async () => {
   const mod = await import("../src/platforms/macos.ts");
   assertEquals(typeof mod.attach, "function");
-  assertEquals(typeof mod.loadMacos, "function");
-  assertEquals(mod.macKeys.codeFromKeyCode(0), "KeyA");
+  assertEquals("macKeys" in mod, false);
+  assertEquals("loadMacos" in mod, false);
 });

@@ -1,6 +1,11 @@
 import { assertEquals } from "@std/assert";
-import { BUTTONS_PRIMARY, PointerEvent, synthesize } from "../mod.ts";
-import { emptySnapshot, type PointerSnapshot } from "../src/types.ts";
+import { PointerEvent } from "../mod.ts";
+import { synthesize } from "../src/synthesize.ts";
+import {
+  BUTTONS_PRIMARY,
+  emptySnapshot,
+  type PointerSnapshot,
+} from "../src/types.ts";
 
 function snap(partial: Partial<PointerSnapshot> = {}): PointerSnapshot {
   return {

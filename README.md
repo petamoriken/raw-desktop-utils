@@ -17,7 +17,7 @@ Intended for [JSR](https://jsr.io). Until it is published, import from the repo
 path:
 
 ```ts
-import { attach, type PointerEvent } from "../raw-desktop-events/mod.ts";
+import { attach } from "../raw-desktop-events/mod.ts";
 ```
 
 Vite / esbuild should import a platform subpath so unused OS backends and key
@@ -25,13 +25,7 @@ tables are dropped from the bundle:
 
 ```ts
 import { attach } from "raw-desktop-events/macos";
-// import { attach } from "raw-desktop-events/windows";
-// import { attach } from "raw-desktop-events/linux";
 ```
-
-Key maps live in `src/keys/{macos,windows,linux}.ts` and are also exported as
-`raw-desktop-events/keys/macos` (and friends). The decoder takes a
-`KeyTranslator`; it does not import any OS table itself.
 
 Permissions: `--allow-ffi --allow-read --allow-write --allow-run --allow-env`.
 The first call compiles a small platform helper (`clang` on macOS) into `TMPDIR`
@@ -44,17 +38,18 @@ const win = new Deno.BrowserWindow({ title: "Game", width: 1280, height: 720 });
 using input = await attach(win, { title: "Game" });
 
 input.addEventListener("pointermove", (event) => {
-  const e = event as PointerEvent;
-  game.hover(e.clientX, e.clientY);
+  game.hover(event.clientX, event.clientY);
 });
 input.addEventListener("pointerdown", (event) => {
-  const e = event as PointerEvent;
-  if (e.button === 0) game.click(e.clientX, e.clientY);
+  if (event.button === 0) game.click(event.clientX, event.clientY);
 });
 
 // Inside the render loop:
 input.poll();
 ```
+
+`addEventListener` is typed like the DOM: `"pointermove"` gives a
+`PointerEvent`, `"wheel"` a `WheelEvent`, `"keydown"` a `KeyboardEvent`.
 
 Listen on the **session**, not on `BrowserWindow`. The window may still emit
 incomplete mouse events; mixing the two sources can double-fire clicks.
@@ -85,8 +80,9 @@ From a live snapshot plus the native queue:
 - `wheel`
 - `keydown` / `keyup`
 
-Classes implement `Symbol.for("Deno.customInspect")`, so `console.log(event)`
-prints the public fields instead of empty private state.
+The public exports are the DOM constructors (`PointerEvent`, `MouseEvent`,
+`WheelEvent`, `KeyboardEvent`, `UIEvent`) plus `attach`. Platform key tables and
+inspect internals stay private.
 
 ## Native ABI
 

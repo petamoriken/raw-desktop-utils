@@ -1,13 +1,13 @@
 import {
   KeyboardEvent,
-  type KeyboardEventInitDict,
+  type KeyboardEventInit,
   MouseEvent,
-  type MouseEventInitDict,
+  type MouseEventInit,
   PointerEvent,
-  type PointerEventInitDict,
+  type PointerEventInit,
   type SynthesizedEvent,
   WheelEvent,
-  type WheelEventInitDict,
+  type WheelEventInit,
 } from "./events.ts";
 import {
   bitFromButton,
@@ -28,7 +28,7 @@ export type SynthesizeOptions = {
 const BUTTON_BITS = [1, 4, 2, 8, 16];
 
 function modifiers(flags: number): Pick<
-  MouseEventInitDict,
+  MouseEventInit,
   "shiftKey" | "ctrlKey" | "altKey" | "metaKey"
 > {
   return {
@@ -43,7 +43,7 @@ function coords(
   snap: Pick<PointerSnapshot, "clientX" | "clientY" | "screenX" | "screenY">,
   prev: PointerSnapshot | null,
 ): Pick<
-  MouseEventInitDict,
+  MouseEventInit,
   | "clientX"
   | "clientY"
   | "screenX"
@@ -74,9 +74,9 @@ function coords(
 function pointerInit(
   snap: PointerSnapshot,
   prev: PointerSnapshot | null,
-  extra: Partial<PointerEventInitDict>,
+  extra: Partial<PointerEventInit>,
   opts: SynthesizeOptions,
-): PointerEventInitDict {
+): PointerEventInit {
   const buttons = extra.buttons ?? snap.buttons;
   return {
     bubbles: true,
@@ -100,9 +100,9 @@ function pointerInit(
 }
 
 function mouseInit(
-  pointer: PointerEventInitDict,
-  extra: Partial<MouseEventInitDict> = {},
-): MouseEventInitDict {
+  pointer: PointerEventInit,
+  extra: Partial<MouseEventInit> = {},
+): MouseEventInit {
   return { ...pointer, ...extra };
 }
 
@@ -114,7 +114,7 @@ export type SynthResult = {
 function pushPointer(
   out: SynthesizedEvent[],
   type: string,
-  init: PointerEventInitDict,
+  init: PointerEventInit,
   mouseType: string | null,
   opts: SynthesizeOptions,
 ) {
@@ -281,7 +281,7 @@ function fireWheel(
   ev: NativeQueuedEvent,
   opts: SynthesizeOptions,
 ) {
-  const init: WheelEventInitDict = {
+  const init: WheelEventInit = {
     ...pointerInit(next, prev, { button: 0, detail: 0 }, opts),
     deltaX: ev.deltaX,
     deltaY: ev.deltaY,
@@ -297,7 +297,7 @@ function fireKey(
   opts: SynthesizeOptions,
 ) {
   const type = ev.type === 4 ? "keydown" : "keyup";
-  const init: KeyboardEventInitDict = {
+  const init: KeyboardEventInit = {
     bubbles: true,
     cancelable: true,
     view: opts.view ?? null,

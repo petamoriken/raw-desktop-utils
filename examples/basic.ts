@@ -21,24 +21,19 @@ const win = new Deno.BrowserWindow({
 using input = await attach(win, { title: TITLE, autoPoll: 16 });
 
 input.addEventListener("pointermove", (event) => {
-  const e = event as import("../mod.ts").PointerEvent;
-  console.log("move", e.clientX, e.clientY, e.buttons);
+  console.log("move", event.clientX, event.clientY, event.buttons);
 });
 input.addEventListener("pointerdown", (event) => {
-  const e = event as import("../mod.ts").PointerEvent;
-  console.log("down", e.button, e.clientX, e.clientY);
+  console.log("down", event.button, event.clientX, event.clientY);
 });
 input.addEventListener("pointerup", (event) => {
-  const e = event as import("../mod.ts").PointerEvent;
-  console.log("up", e.button, e.clientX, e.clientY);
+  console.log("up", event.button, event.clientX, event.clientY);
 });
 input.addEventListener("wheel", (event) => {
-  const e = event as import("../mod.ts").WheelEvent;
-  console.log("wheel", e.deltaX, e.deltaY);
+  console.log("wheel", event.deltaX, event.deltaY);
 });
 input.addEventListener("keydown", (event) => {
-  const e = event as import("../mod.ts").KeyboardEvent;
-  console.log("key", e.key, e.code);
+  console.log("key", event.key, event.code);
 });
 
 win.addEventListener("close", () => {

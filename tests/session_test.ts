@@ -1,6 +1,4 @@
 import { assertEquals } from "@std/assert";
-import type { PointerEvent } from "../src/events.ts";
-import { kCustomInspect } from "../src/inspect.ts";
 import type { NativeBackend } from "../src/native/backend.ts";
 import { InputSession } from "../src/session.ts";
 import {
@@ -74,7 +72,7 @@ Deno.test("session poll dispatches synthesized pointer events", () => {
   session.addEventListener("pointermove", () => seen.push("pointermove"));
   session.addEventListener("pointerdown", (e) => {
     seen.push("pointerdown");
-    assertEquals((e as PointerEvent).button, 0);
+    assertEquals(e.button, 0);
   });
   session.poll();
   session.poll();
@@ -95,6 +93,7 @@ Deno.test("session customInspect hides private fields", () => {
   assertEquals(session.closed, true);
 });
 
-Deno.test("kCustomInspect is the Deno inspect symbol", () => {
-  assertEquals(kCustomInspect, Symbol.for("Deno.customInspect"));
+Deno.test("inspecting InputSession.prototype does not throw", () => {
+  const text = Deno.inspect(InputSession.prototype);
+  assertEquals(text.includes("InputSession"), true);
 });

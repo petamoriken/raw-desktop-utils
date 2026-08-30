@@ -74,6 +74,21 @@ Deno.test("Deno.inspect uses customInspect and hides private fields", () => {
   assertEquals(text.includes("#"), false);
 });
 
+Deno.test("inspecting event prototypes does not throw", () => {
+  for (
+    const proto of [
+      UIEvent.prototype,
+      MouseEvent.prototype,
+      PointerEvent.prototype,
+      WheelEvent.prototype,
+      KeyboardEvent.prototype,
+    ]
+  ) {
+    const text = Deno.inspect(proto);
+    assertEquals(text.includes("Event"), true);
+  }
+});
+
 Deno.test("pressure defaults follow the Pointer Events spec", () => {
   assertEquals(effectivePressure(-1, 0), 0);
   assertEquals(effectivePressure(-1, BUTTONS_PRIMARY), 0.5);

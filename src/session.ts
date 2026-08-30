@@ -1,9 +1,10 @@
+import type { InputSessionEventMap } from "./event_map.ts";
 import { cloneSynthesized, type SynthesizedEvent } from "./events.ts";
-import { formatInspect, type InspectFn, kCustomInspect } from "./inspect.ts";
+import { inspectBranded, type InspectFn, kCustomInspect } from "./inspect.ts";
+import { loadNative, type NativeBackend } from "./native/mod.ts";
 import { synthesize } from "./synthesize.ts";
 import type { AttachOptions, DesktopWindow, PointerSnapshot } from "./types.ts";
 import { emptySnapshot } from "./types.ts";
-import { loadNative, type NativeBackend } from "./native/mod.ts";
 
 const DEFAULT_LOCATE_MS = 500;
 
@@ -81,6 +82,42 @@ export class InputSession extends EventTarget {
     this.close();
   }
 
+  override addEventListener<K extends keyof InputSessionEventMap>(
+    type: K,
+    listener: (this: this, ev: InputSessionEventMap[K]) => void,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  override addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void;
+  override addEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | AddEventListenerOptions,
+  ): void {
+    super.addEventListener(type, listener, options);
+  }
+
+  override removeEventListener<K extends keyof InputSessionEventMap>(
+    type: K,
+    listener: (this: this, ev: InputSessionEventMap[K]) => void,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  override removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions,
+  ): void;
+  override removeEventListener(
+    type: string,
+    listener: EventListenerOrEventListenerObject | null,
+    options?: boolean | EventListenerOptions,
+  ): void {
+    super.removeEventListener(type, listener, options);
+  }
+
   #assertOpen(): void {
     if (this.#closed) {
       throw new Error("raw-desktop-events: InputSession is closed");
@@ -96,9 +133,10 @@ export class InputSession extends EventTarget {
   }
 
   [kCustomInspect](inspect: InspectFn, options?: Deno.InspectOptions): string {
-    return formatInspect(
+    return inspectBranded(
+      #closed in this,
       "InputSession",
-      {
+      () => ({
         closed: this.#closed,
         os: this.#native.os,
         inside: this.#last.inside,
@@ -107,7 +145,7 @@ export class InputSession extends EventTarget {
         clientY: this.#last.clientY,
         buttons: this.#last.buttons,
         autoPoll: this.#timer !== null,
-      },
+      }),
       inspect,
       options,
     );

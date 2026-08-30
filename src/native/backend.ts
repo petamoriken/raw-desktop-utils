@@ -1,4 +1,4 @@
-import { formatInspect, type InspectFn, kCustomInspect } from "../inspect.ts";
+import { inspectBranded, type InspectFn, kCustomInspect } from "../inspect.ts";
 import type { NativeQueuedEvent, PointerSnapshot } from "../types.ts";
 
 export type NativeBackend = {
@@ -29,12 +29,10 @@ export class NativeUnsupportedError extends Error {
   }
 
   [kCustomInspect](inspect: InspectFn, options?: Deno.InspectOptions): string {
-    return formatInspect(
+    return inspectBranded(
+      #os in this,
       "NativeUnsupportedError",
-      {
-        os: this.#os,
-        message: this.message,
-      },
+      () => ({ os: this.#os, message: this.message }),
       inspect,
       options,
     );
