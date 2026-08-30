@@ -1,7 +1,8 @@
 # AGENTS.md
 
-FFI-backed UI Events / Pointer Events for `deno desktop` raw mode. Intended for
-JSR. Comments, commit messages, and this file are English.
+Utilities for `deno desktop` raw windows (input session, DOM-shaped events,
+requestAnimationFrame). Intended for JSR. Comments, commit messages, and this
+file are English.
 
 ## Commands
 

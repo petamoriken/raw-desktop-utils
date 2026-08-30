@@ -1,9 +1,7 @@
 /**
- * UI Events and Pointer Events for `deno desktop` raw mode.
- *
- * Raw windows have no DOM, so `PointerEvent` / `UIEvent` never fire.
- * This package samples the OS via FFI and synthesizes the same event
- * shapes a browser would dispatch.
+ * Utilities for `deno desktop` raw windows: attach an input session,
+ * poll OS pointer and key events as DOM events, and drive the loop
+ * with `requestAnimationFrame`.
  */
 export { attach, InputSession } from "./src/session.ts";
 export type { FrameRequestCallback } from "./src/session.ts";

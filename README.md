@@ -1,7 +1,8 @@
 # raw-desktop-utils
 
-UI Events and Pointer Events for
-[`deno desktop`](https://docs.deno.com/runtime/desktop/) **raw** mode.
+Utilities for [`deno desktop`](https://docs.deno.com/runtime/desktop/) raw
+`BrowserWindow`s: attach an input session, poll OS pointer and key events as DOM
+events, and drive the loop with `requestAnimationFrame`.
 
 `attach(window)` returns an `InputSession`. Each `poll()` reads the OS pointer
 and the queued click / wheel / key events through FFI, then dispatches the same
