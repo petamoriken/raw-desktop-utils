@@ -130,20 +130,33 @@ fn start_pump() {
     }
     let _ = thread::Builder::new()
         .name("rdu-wayland".into())
-        .spawn(|| loop {
-            thread::sleep(Duration::from_millis(8));
-            dispatch_state();
-            let pending = STATE
-                .lock()
-                .ok()
-                .and_then(|guard| {
+        .spawn(|| {
+            let mut last = None;
+            loop {
+                thread::sleep(Duration::from_millis(8));
+                dispatch_state();
+                let sample = STATE.lock().ok().and_then(|guard| {
                     guard.as_ref().map(|wl| {
-                        !wl.input.events.is_empty() || wl.input.buttons != 0
+                        (
+                            wl.input.pointer_id,
+                            wl.input.keyboard_id,
+                            wl.input.buttons,
+                            wl.input.modifiers,
+                            wl.input.x.to_bits(),
+                            wl.input.y.to_bits(),
+                            wl.input.events.len(),
+                        )
                     })
-                })
-                .unwrap_or(false);
-            if pending {
-                crate::wakeup::notify();
+                });
+                let Some(sample) = sample else {
+                    last = None;
+                    continue;
+                };
+                let changed = last.is_some_and(|prev| prev != sample);
+                last = Some(sample);
+                if changed {
+                    crate::wakeup::notify();
+                }
             }
         });
 }

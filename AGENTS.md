@@ -146,7 +146,8 @@ take `--allow-run`.
   `mouseLocation` globally. X11's implicit grab goes to the window owner, so a 4
   ms `query_pointer` sampler wakes the drag after MotionNotify stops. Wayland
   only sees the seat; `applyViewBounds` treats out-of-surface coords as outside
-  when the compositor keeps sending motion under the grab.
+  when the compositor keeps sending motion under the grab. The Wayland pump
+  dispatches on a timer but notifies only when seat state or the queue changed.
 - Close a native audio sink you opened. `AudioContext` only closes a sink it
   created itself, and a leaked one takes the process down with an access
   violation: Deno unloads the library at teardown while the audio callback is
