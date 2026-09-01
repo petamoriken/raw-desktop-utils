@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import {
+  CompositionEvent,
   KeyboardEvent,
   MouseEvent,
   PointerEvent,
@@ -45,10 +46,28 @@ Deno.test("wheel and keyboard construct", () => {
     key: "a",
     code: "KeyA",
     ctrlKey: true,
+    capsLock: true,
+    isComposing: true,
+    repeat: true,
+    location: KeyboardEvent.DOM_KEY_LOCATION_LEFT,
   });
   assertEquals(k.key, "a");
+  assertEquals(k.repeat, true);
+  assertEquals(k.isComposing, true);
+  assertEquals(k.location, KeyboardEvent.DOM_KEY_LOCATION_LEFT);
   assertEquals(k.getModifierState("Control"), true);
   assertEquals(k.getModifierState("Shift"), false);
+  assertEquals(k.getModifierState("CapsLock"), true);
+  assertEquals(k.getModifierState("Accel"), Deno.build.os !== "darwin");
+  assertEquals(
+    new KeyboardEvent("keydown", { metaKey: true }).getModifierState("Accel"),
+    Deno.build.os === "darwin",
+  );
+  assertEquals(new KeyboardEvent("keydown").isComposing, false);
+  const c = new CompositionEvent("compositionupdate", { data: "あ" });
+  assertEquals(c instanceof UIEvent, true);
+  assertEquals(c.data, "あ");
+  assertEquals(new CompositionEvent("compositionstart").data, "");
 });
 
 Deno.test("button bit mapping is DOM-shaped", () => {
@@ -82,6 +101,7 @@ Deno.test("inspecting event prototypes does not throw", () => {
       PointerEvent.prototype,
       WheelEvent.prototype,
       KeyboardEvent.prototype,
+      CompositionEvent.prototype,
     ]
   ) {
     const text = Deno.inspect(proto);

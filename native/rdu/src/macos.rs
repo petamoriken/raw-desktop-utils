@@ -15,19 +15,20 @@ use std::time::{Duration, Instant};
 use block2::RcBlock;
 use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
-use objc2::runtime::AnyObject;
-use objc2::{ClassType, MainThreadMarker};
+use objc2::runtime::{AnyClass, AnyObject};
+use objc2::{sel, ClassType, MainThreadMarker};
 use objc2_app_kit::{
     NSApplication, NSEvent, NSEventMask, NSEventModifierFlags, NSEventSubtype, NSEventType,
     NSScreen, NSView, NSWindow,
 };
 use objc2_core_graphics::{CGEventSource, CGEventSourceStateID, CGMouseButton};
-use objc2_foundation::{NSPoint, NSRect, NSSize, NSString, NSThread};
+use objc2_foundation::{NSPoint, NSRange, NSRect, NSSize, NSString, NSThread};
 
 use crate::abi::{
-    Chrome, QueuedEvent, Snapshot, ABI_VERSION, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN,
-    EV_POINTER_UP, EV_WHEEL, FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CTRL,
-    MOD_META, MOD_SHIFT, PTR_MOUSE, PTR_PEN, QUEUE_CAP,
+    Chrome, QueuedEvent, Snapshot, ABI_VERSION, EV_COMPOSITION_END, EV_COMPOSITION_START,
+    EV_COMPOSITION_UPDATE, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN, EV_POINTER_UP, EV_WHEEL,
+    FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CAPS, MOD_COMPOSING, MOD_CTRL,
+    MOD_META, MOD_REPEAT, MOD_SHIFT, PTR_MOUSE, PTR_PEN, QUEUE_CAP,
 };
 
 struct Queue {
@@ -87,6 +88,9 @@ struct State {
     recent_n: usize,
     last_buttons: Option<u32>,
     last_keys: u128,
+    composing: bool,
+    marked: [u8; KEY_BYTES],
+    marked_len: u32,
     tablet: Tablet,
 }
 
@@ -104,6 +108,9 @@ static STATE: Mutex<State> = Mutex::new(State {
     recent_n: 0,
     last_buttons: None,
     last_keys: 0,
+    composing: false,
+    marked: [0; KEY_BYTES],
+    marked_len: 0,
     tablet: Tablet {
         pressure: -1.0,
         tilt_x: 0.0,
@@ -222,6 +229,185 @@ fn modifiers(flags: NSEventModifierFlags) -> u32 {
     }
     if flags.contains(NSEventModifierFlags::Command) {
         m |= MOD_META;
+    }
+    if flags.contains(NSEventModifierFlags::CapsLock) {
+        m |= MOD_CAPS;
+    }
+    m
+}
+
+fn responds_to(obj: &AnyObject, sel: objc2::runtime::Sel) -> bool {
+    unsafe { objc2::msg_send![obj, respondsToSelector: sel] }
+}
+
+fn marked_string(obj: &AnyObject) -> String {
+    if !responds_to(obj, sel!(markedRange)) {
+        return String::new();
+    }
+    let range: NSRange = unsafe { objc2::msg_send![obj, markedRange] };
+    if range.length == 0 {
+        return String::new();
+    }
+    if !responds_to(obj, sel!(attributedSubstringForProposedRange:actualRange:)) {
+        return String::new();
+    }
+    let attr: *mut AnyObject = unsafe {
+        objc2::msg_send![
+            obj,
+            attributedSubstringForProposedRange: range,
+            actualRange: ptr::null_mut::<NSRange>(),
+        ]
+    };
+    if attr.is_null() {
+        return String::new();
+    }
+    let nsstr: *mut AnyObject = unsafe { objc2::msg_send![attr, string] };
+    if nsstr.is_null() {
+        return String::new();
+    }
+    unsafe { &*nsstr.cast::<NSString>() }.to_string()
+}
+
+fn marked_from_object(obj: &AnyObject) -> Option<(bool, String)> {
+    if !responds_to(obj, sel!(hasMarkedText)) {
+        return None;
+    }
+    let has: bool = unsafe { objc2::msg_send![obj, hasMarkedText] };
+    if !has {
+        return Some((false, String::new()));
+    }
+    Some((true, marked_string(obj)))
+}
+
+/// IME marked text on the first responder or the current input client.
+/// Read before the key is delivered, so it is the session state this key
+/// occurs in (`KeyboardEvent.isComposing`).
+fn marked_state(view: &NSView) -> (bool, String) {
+    if let Some(window) = view.window() {
+        if let Some(responder) = window.firstResponder() {
+            let obj = unsafe { &*Retained::as_ptr(&responder).cast::<AnyObject>() };
+            if let Some(state) = marked_from_object(obj) {
+                return state;
+            }
+        }
+    }
+    let Some(cls) = AnyClass::get(CStr::from_bytes_with_nul(b"NSTextInputContext\0").unwrap())
+    else {
+        return (false, String::new());
+    };
+    let ctx: *mut AnyObject = unsafe { objc2::msg_send![cls, currentInputContext] };
+    if ctx.is_null() {
+        return (false, String::new());
+    }
+    let client: *mut AnyObject = unsafe { objc2::msg_send![ctx, client] };
+    if client.is_null() {
+        return (false, String::new());
+    }
+    marked_from_object(unsafe { &*client }).unwrap_or((false, String::new()))
+}
+
+fn has_marked_text(view: &NSView) -> bool {
+    marked_state(view).0
+}
+
+fn copy_utf8(dest: &mut [u8], text: &str) -> u32 {
+    let bytes = text.as_bytes();
+    let mut n = bytes.len().min(dest.len());
+    while n > 0 && !text.is_char_boundary(n) {
+        n -= 1;
+    }
+    dest[..n].copy_from_slice(&bytes[..n]);
+    if n < dest.len() {
+        dest[n..].fill(0);
+    }
+    n as u32
+}
+
+fn set_event_text(ev: &mut QueuedEvent, text: &str) {
+    ev.key_len = copy_utf8(&mut ev.key, text);
+}
+
+fn store_marked(state: &mut State, text: &str) {
+    state.marked_len = copy_utf8(&mut state.marked, text);
+}
+
+fn stored_marked(state: &State) -> String {
+    String::from_utf8_lossy(&state.marked[..state.marked_len as usize]).into_owned()
+}
+
+fn push_composition(type_: u32, data: &str, view: &NSView, mtm: MainThreadMarker) {
+    let mut ev = QueuedEvent::empty();
+    ev.type_ = type_;
+    ev.modifiers = modifiers(NSEvent::modifierFlags_class());
+    ev.buttons = session_buttons();
+    ev.pressure = -1.0;
+    set_event_text(&mut ev, data);
+    let screen = NSEvent::mouseLocation();
+    if let Some(mapped) = map_screen(view, screen, false, mtm) {
+        ev.client_x = mapped.client_x;
+        ev.client_y = mapped.client_y;
+        ev.screen_x = mapped.screen_x;
+        ev.screen_y = mapped.screen_y;
+    }
+    push(ev);
+}
+
+fn emit_composition(view: &NSView, mtm: MainThreadMarker) {
+    let (has, text) = marked_state(view);
+    let (was, prev) = {
+        let mut state = match STATE.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let was = state.composing;
+        let prev = stored_marked(&state);
+        state.composing = has;
+        store_marked(&mut state, &text);
+        (was, prev)
+    };
+    if !was && has {
+        push_composition(EV_COMPOSITION_START, &text, view, mtm);
+        if !text.is_empty() {
+            push_composition(EV_COMPOSITION_UPDATE, &text, view, mtm);
+        }
+    } else if was && has && text != prev {
+        push_composition(EV_COMPOSITION_UPDATE, &text, view, mtm);
+    } else if was && !has {
+        push_composition(EV_COMPOSITION_END, &prev, view, mtm);
+    }
+}
+
+/// After IME has seen the key (next main-queue turn).
+fn schedule_composition_check() {
+    let job: Box<dyn FnOnce() + Send> = Box::new(|| {
+        let attached = match STATE.lock() {
+            Ok(s) => s.attached,
+            Err(_) => return,
+        };
+        if attached.is_null() {
+            return;
+        }
+        let Some(mtm) = require_mtm() else {
+            return;
+        };
+        let Some(view) = as_view(attached) else {
+            return;
+        };
+        emit_composition(&view, mtm);
+    });
+    let ctx = Box::into_raw(Box::new(job)).cast();
+    unsafe {
+        DispatchQueue::main().exec_async_f(ctx, call_boxed);
+    }
+}
+
+fn key_modifiers(event: &NSEvent, view: &NSView) -> u32 {
+    let mut m = modifiers(event.modifierFlags());
+    if event.r#type() == NSEventType::KeyDown && event.isARepeat() {
+        m |= MOD_REPEAT;
+    }
+    if has_marked_text(view) {
+        m |= MOD_COMPOSING;
     }
     m
 }
@@ -366,7 +552,7 @@ fn event_for_attached(event: &NSEvent, view: &NSView, mtm: MainThreadMarker) -> 
         }
     }
     let t = event.r#type();
-    if t == NSEventType::KeyDown || t == NSEventType::KeyUp {
+    if t == NSEventType::KeyDown || t == NSEventType::KeyUp || t == NSEventType::FlagsChanged {
         // Raw winit windows are often main but not key. Take keys when
         // this app is active so a focused game still sees Enter / letters.
         return ours.isKeyWindow()
@@ -409,39 +595,45 @@ fn same_recent(a: &Recent, ev: &QueuedEvent) -> bool {
         && (a.delta_y - ev.delta_y).abs() < 0.5
 }
 
+fn is_composition(type_: u32) -> bool {
+    type_ == EV_COMPOSITION_START || type_ == EV_COMPOSITION_UPDATE || type_ == EV_COMPOSITION_END
+}
+
 fn push(ev: QueuedEvent) {
     let mut state = STATE.lock().expect("rdu state");
     let now = Instant::now();
-    for recent in state.recent.iter().take(state.recent_n) {
-        let Some(at) = recent.at else {
-            continue;
+    if !is_composition(ev.type_) {
+        for recent in state.recent.iter().take(state.recent_n) {
+            let Some(at) = recent.at else {
+                continue;
+            };
+            if now.duration_since(at).as_nanos() > DEDUPE_NS {
+                continue;
+            }
+            if same_recent(recent, &ev) {
+                return;
+            }
+        }
+        let slot = if state.recent_n < RECENT_CAP {
+            let i = state.recent_n;
+            state.recent_n += 1;
+            i
+        } else {
+            state.recent.rotate_left(1);
+            RECENT_CAP - 1
         };
-        if now.duration_since(at).as_nanos() > DEDUPE_NS {
-            continue;
-        }
-        if same_recent(recent, &ev) {
-            return;
-        }
+        state.recent[slot] = Recent {
+            type_: ev.type_,
+            button: ev.button,
+            key_code: ev.key_code,
+            click_count: ev.click_count,
+            client_x: ev.client_x,
+            client_y: ev.client_y,
+            delta_x: ev.delta_x,
+            delta_y: ev.delta_y,
+            at: Some(now),
+        };
     }
-    let slot = if state.recent_n < RECENT_CAP {
-        let i = state.recent_n;
-        state.recent_n += 1;
-        i
-    } else {
-        state.recent.rotate_left(1);
-        RECENT_CAP - 1
-    };
-    state.recent[slot] = Recent {
-        type_: ev.type_,
-        button: ev.button,
-        key_code: ev.key_code,
-        click_count: ev.click_count,
-        client_x: ev.client_x,
-        client_y: ev.client_y,
-        delta_x: ev.delta_x,
-        delta_y: ev.delta_y,
-        at: Some(now),
-    };
     let q = &mut state.queue;
     if q.count == QUEUE_CAP {
         q.head = (q.head + 1) % QUEUE_CAP;
@@ -532,16 +724,24 @@ fn handle_event(event: &NSEvent) {
             } else {
                 EV_KEY_UP
             };
+            ev.modifiers = key_modifiers(event, &view);
             let chars = event
                 .charactersIgnoringModifiers()
                 .filter(|s| s.length() > 0)
                 .or_else(|| event.characters());
             if let Some(chars) = chars {
-                let utf8 = chars.to_string();
-                let n = utf8.len().min(KEY_BYTES);
-                ev.key[..n].copy_from_slice(&utf8.as_bytes()[..n]);
-                ev.key_len = n as u32;
+                set_event_text(&mut ev, &chars.to_string());
             }
+            push(ev);
+            schedule_composition_check();
+        }
+        NSEventType::FlagsChanged => {
+            ev.type_ = if session_key_down(event.keyCode()) {
+                EV_KEY_DOWN
+            } else {
+                EV_KEY_UP
+            };
+            ev.modifiers = key_modifiers(event, &view);
             push(ev);
         }
         NSEventType::TabletPoint => fill_pointer_fields(event, &mut ev),
@@ -559,6 +759,7 @@ fn event_mask() -> NSEventMask {
         | NSEventMask::ScrollWheel
         | NSEventMask::KeyDown
         | NSEventMask::KeyUp
+        | NSEventMask::FlagsChanged
         | NSEventMask::TabletPoint
 }
 
@@ -641,7 +842,10 @@ fn sample_keys(view: &NSView, mtm: MainThreadMarker) {
     if prev == now {
         return;
     }
-    let mods = modifiers(NSEvent::modifierFlags_class());
+    let mut mods = modifiers(NSEvent::modifierFlags_class());
+    if has_marked_text(view) {
+        mods |= MOD_COMPOSING;
+    }
     let screen = NSEvent::mouseLocation();
     let mapped = map_screen(view, screen, false, mtm);
     for code in 0..128u16 {
@@ -692,12 +896,14 @@ fn sample_buttons() {
         prev
     };
     let Some(prev) = prev else {
+        emit_composition(&view, mtm);
         return;
     };
     if prev != buttons {
         push_button_delta(prev, buttons, &view, mtm);
     }
     sample_keys(&view, mtm);
+    emit_composition(&view, mtm);
 }
 
 fn start_sampler() {
@@ -705,10 +911,12 @@ fn start_sampler() {
     if STARTED.swap(true, Ordering::SeqCst) {
         return;
     }
-    let _ = std::thread::Builder::new().name("rdu-sample".into()).spawn(|| loop {
-        std::thread::sleep(Duration::from_millis(4));
-        on_main(sample_buttons);
-    });
+    let _ = std::thread::Builder::new()
+        .name("rdu-sample".into())
+        .spawn(|| loop {
+            std::thread::sleep(Duration::from_millis(4));
+            on_main(sample_buttons);
+        });
 }
 
 fn install_monitor(state: &mut State) {
@@ -804,6 +1012,9 @@ pub extern "C" fn rdu_attach(view_ptr: *mut c_void) -> i32 {
         state.recent_n = 0;
         state.last_buttons = None;
         state.last_keys = 0;
+        state.composing = false;
+        state.marked = [0; KEY_BYTES];
+        state.marked_len = 0;
         install_monitor(&mut state);
         ok_store.store(1, Ordering::SeqCst);
     });

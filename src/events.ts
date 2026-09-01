@@ -21,6 +21,8 @@ export type MouseEventInit = UIEventInit & {
   shiftKey?: boolean;
   altKey?: boolean;
   metaKey?: boolean;
+  /** `getModifierState("CapsLock")`. Not a standard `MouseEventInit` field. */
+  capsLock?: boolean;
   button?: number;
   buttons?: number;
   relatedTarget?: EventTarget | null;
@@ -56,10 +58,45 @@ export type KeyboardEventInit = UIEventInit & {
   shiftKey?: boolean;
   altKey?: boolean;
   metaKey?: boolean;
+  /** `getModifierState("CapsLock")`. Not a standard `KeyboardEventInit` field. */
+  capsLock?: boolean;
   repeat?: boolean;
   isComposing?: boolean;
   keyCode?: number;
 };
+
+export type CompositionEventInit = UIEventInit & {
+  data?: string;
+};
+
+function modifierState(
+  key: string,
+  flags: {
+    altKey: boolean;
+    ctrlKey: boolean;
+    metaKey: boolean;
+    shiftKey: boolean;
+    capsLock: boolean;
+  },
+): boolean {
+  switch (key) {
+    case "Alt":
+    case "AltGraph":
+      return flags.altKey;
+    case "Control":
+      return flags.ctrlKey;
+    case "Meta":
+      return flags.metaKey;
+    case "Shift":
+      return flags.shiftKey;
+    case "CapsLock":
+      return flags.capsLock;
+    case "Accel":
+      return Deno.build.os === "darwin" ? flags.metaKey : flags.ctrlKey;
+    default:
+      return false;
+  }
+}
 
 /**
  * UI Events `UIEvent` stand-in. Deno desktop raw mode has no DOM
@@ -109,6 +146,7 @@ export class MouseEvent extends UIEvent {
   readonly #shiftKey: boolean;
   readonly #altKey: boolean;
   readonly #metaKey: boolean;
+  readonly #capsLock: boolean;
   readonly #button: number;
   readonly #buttons: number;
   readonly #relatedTarget: EventTarget | null;
@@ -129,6 +167,7 @@ export class MouseEvent extends UIEvent {
     this.#shiftKey = init.shiftKey ?? false;
     this.#altKey = init.altKey ?? false;
     this.#metaKey = init.metaKey ?? false;
+    this.#capsLock = init.capsLock ?? false;
     this.#button = init.button ?? 0;
     this.#buttons = init.buttons ?? 0;
     this.#relatedTarget = init.relatedTarget ?? null;
@@ -187,19 +226,13 @@ export class MouseEvent extends UIEvent {
   }
 
   getModifierState(key: string): boolean {
-    switch (key) {
-      case "Alt":
-      case "AltGraph":
-        return this.#altKey;
-      case "Control":
-        return this.#ctrlKey;
-      case "Meta":
-        return this.#metaKey;
-      case "Shift":
-        return this.#shiftKey;
-      default:
-        return false;
-    }
+    return modifierState(key, {
+      altKey: this.#altKey,
+      ctrlKey: this.#ctrlKey,
+      metaKey: this.#metaKey,
+      shiftKey: this.#shiftKey,
+      capsLock: this.#capsLock,
+    });
   }
 
   override [kCustomInspect](
@@ -400,6 +433,7 @@ export class KeyboardEvent extends UIEvent {
   readonly #shiftKey: boolean;
   readonly #altKey: boolean;
   readonly #metaKey: boolean;
+  readonly #capsLock: boolean;
   readonly #repeat: boolean;
   readonly #isComposing: boolean;
   readonly #keyCode: number;
@@ -413,6 +447,7 @@ export class KeyboardEvent extends UIEvent {
     this.#shiftKey = init.shiftKey ?? false;
     this.#altKey = init.altKey ?? false;
     this.#metaKey = init.metaKey ?? false;
+    this.#capsLock = init.capsLock ?? false;
     this.#repeat = init.repeat ?? false;
     this.#isComposing = init.isComposing ?? false;
     this.#keyCode = init.keyCode ?? 0;
@@ -450,20 +485,19 @@ export class KeyboardEvent extends UIEvent {
   }
 
   getModifierState(key: string): boolean {
-    switch (key) {
-      case "Alt":
-      case "AltGraph":
-        return this.#altKey;
-      case "Control":
-        return this.#ctrlKey;
-      case "Meta":
-        return this.#metaKey;
-      case "Shift":
-        return this.#shiftKey;
-      default:
-        return false;
-    }
+    return modifierState(key, {
+      altKey: this.#altKey,
+      ctrlKey: this.#ctrlKey,
+      metaKey: this.#metaKey,
+      shiftKey: this.#shiftKey,
+      capsLock: this.#capsLock,
+    });
   }
+
+  static readonly DOM_KEY_LOCATION_STANDARD = 0;
+  static readonly DOM_KEY_LOCATION_LEFT = 1;
+  static readonly DOM_KEY_LOCATION_RIGHT = 2;
+  static readonly DOM_KEY_LOCATION_NUMPAD = 3;
 
   override [kCustomInspect](
     inspect: InspectFn,
@@ -479,6 +513,7 @@ export class KeyboardEvent extends UIEvent {
         keyCode: this.#keyCode,
         location: this.#location,
         repeat: this.#repeat,
+        isComposing: this.#isComposing,
         ctrlKey: this.#ctrlKey,
         shiftKey: this.#shiftKey,
         altKey: this.#altKey,
@@ -490,11 +525,38 @@ export class KeyboardEvent extends UIEvent {
   }
 }
 
+export class CompositionEvent extends UIEvent {
+  readonly #data: string;
+
+  constructor(type: string, init: CompositionEventInit = {}) {
+    super(type, init);
+    this.#data = init.data ?? "";
+  }
+
+  get data(): string {
+    return this.#data;
+  }
+
+  override [kCustomInspect](
+    inspect: InspectFn,
+    options?: Deno.InspectOptions,
+  ): string {
+    return inspectBranded(
+      #data in this,
+      "CompositionEvent",
+      () => ({ type: this.type, data: this.#data }),
+      inspect,
+      options,
+    );
+  }
+}
+
 export type SynthesizedEvent =
   | PointerEvent
   | MouseEvent
   | WheelEvent
-  | KeyboardEvent;
+  | KeyboardEvent
+  | CompositionEvent;
 
 /** Rebuild an event so it can be dispatched to a second target. */
 export function cloneSynthesized(event: SynthesizedEvent): SynthesizedEvent {
@@ -510,6 +572,15 @@ export function cloneSynthesized(event: SynthesizedEvent): SynthesizedEvent {
       deltaMode: event.deltaMode,
     });
   }
+  if (event instanceof CompositionEvent) {
+    return new CompositionEvent(event.type, {
+      bubbles: event.bubbles,
+      cancelable: event.cancelable,
+      view: event.view,
+      detail: event.detail,
+      data: event.data,
+    });
+  }
   if (event instanceof KeyboardEvent) {
     return new KeyboardEvent(event.type, {
       bubbles: event.bubbles,
@@ -523,6 +594,7 @@ export function cloneSynthesized(event: SynthesizedEvent): SynthesizedEvent {
       shiftKey: event.shiftKey,
       altKey: event.altKey,
       metaKey: event.metaKey,
+      capsLock: event.getModifierState("CapsLock"),
       repeat: event.repeat,
       isComposing: event.isComposing,
       keyCode: event.keyCode,
@@ -551,6 +623,7 @@ function copyMouse(event: MouseEvent): MouseEventInit {
     shiftKey: event.shiftKey,
     altKey: event.altKey,
     metaKey: event.metaKey,
+    capsLock: event.getModifierState("CapsLock"),
     button: event.button,
     buttons: event.buttons,
     relatedTarget: event.relatedTarget,

@@ -8,6 +8,12 @@ pub const MOD_SHIFT: u32 = 1;
 pub const MOD_CTRL: u32 = 2;
 pub const MOD_ALT: u32 = 4;
 pub const MOD_META: u32 = 8;
+/// `KeyboardEvent.getModifierState("CapsLock")`.
+pub const MOD_CAPS: u32 = 16;
+/// Key event only: `KeyboardEvent.repeat`.
+pub const MOD_REPEAT: u32 = 64;
+/// Key event only: `KeyboardEvent.isComposing`.
+pub const MOD_COMPOSING: u32 = 128;
 
 pub const PTR_MOUSE: u32 = 0;
 pub const PTR_PEN: u32 = 1;
@@ -17,6 +23,9 @@ pub const EV_POINTER_UP: u32 = 2;
 pub const EV_WHEEL: u32 = 3;
 pub const EV_KEY_DOWN: u32 = 4;
 pub const EV_KEY_UP: u32 = 5;
+pub const EV_COMPOSITION_START: u32 = 6;
+pub const EV_COMPOSITION_UPDATE: u32 = 7;
+pub const EV_COMPOSITION_END: u32 = 8;
 
 pub const QUEUE_CAP: usize = 256;
 pub const KEY_BYTES: usize = 32;

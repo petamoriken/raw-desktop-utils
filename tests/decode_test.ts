@@ -3,6 +3,7 @@ import { macKeys } from "../src/keys/macos.ts";
 import { QUEUED_EVENT_BYTES, SNAPSHOT_BYTES } from "../src/native/abi.ts";
 import { decodeQueuedEvent, decodeSnapshot } from "../src/native/decode.ts";
 import type { KeyTranslator } from "../src/keys/types.ts";
+import { MOD_CAPS, MOD_COMPOSING, MOD_REPEAT } from "../src/types.ts";
 
 Deno.test("snapshot decoder reads little-endian packed fields", () => {
   const buf = new ArrayBuffer(SNAPSHOT_BYTES);
@@ -66,6 +67,8 @@ Deno.test("queued event decoder uses the supplied key translator", () => {
   assertEquals(ev.type, 4);
   assertEquals(ev.code, "KeyA");
   assertEquals(ev.key, "a");
+  assertEquals(ev.repeat, false);
+  assertEquals(ev.isComposing, false);
 
   const custom: KeyTranslator = {
     codeFromKeyCode: () => "CustomCode",
@@ -74,4 +77,16 @@ Deno.test("queued event decoder uses the supplied key translator", () => {
   const mapped = decodeQueuedEvent(buf, 0, custom);
   assertEquals(mapped.code, "CustomCode");
   assertEquals(mapped.key, "k:a");
+});
+
+Deno.test("queued key decoder reads repeat, composing, and CapsLock bits", () => {
+  const buf = new Uint8Array(QUEUED_EVENT_BYTES);
+  const v = new DataView(buf.buffer);
+  v.setUint32(0, 4, true);
+  v.setUint32(12, MOD_CAPS | MOD_REPEAT | MOD_COMPOSING, true);
+  v.setUint32(20, 0, true);
+  const ev = decodeQueuedEvent(buf, 0, macKeys);
+  assertEquals(ev.repeat, true);
+  assertEquals(ev.isComposing, true);
+  assertEquals((ev.modifiers & MOD_CAPS) !== 0, true);
 });

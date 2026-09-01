@@ -8,6 +8,7 @@ export { attach, InputSession, Screen } from "./src/session.ts";
 export type { FrameRequestCallback, ScreenEventMap } from "./src/session.ts";
 export type { InputSessionEventMap } from "./src/event_map.ts";
 export {
+  CompositionEvent,
   KeyboardEvent,
   MouseEvent,
   PointerEvent,
@@ -15,6 +16,7 @@ export {
   WheelEvent,
 } from "./src/events.ts";
 export type {
+  CompositionEventInit,
   KeyboardEventInit,
   MouseEventInit,
   PointerEventInit,

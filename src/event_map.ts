@@ -1,4 +1,5 @@
 import type {
+  CompositionEvent,
   KeyboardEvent,
   MouseEvent,
   PointerEvent,
@@ -32,4 +33,7 @@ export interface InputSessionEventMap {
   wheel: WheelEvent;
   keydown: KeyboardEvent;
   keyup: KeyboardEvent;
+  compositionstart: CompositionEvent;
+  compositionupdate: CompositionEvent;
+  compositionend: CompositionEvent;
 }

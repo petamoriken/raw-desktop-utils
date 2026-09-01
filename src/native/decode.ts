@@ -2,6 +2,8 @@ import { locationFromCode } from "../keys/shared.ts";
 import type { KeyTranslator } from "../keys/types.ts";
 import {
   emptySnapshot,
+  MOD_COMPOSING,
+  MOD_REPEAT,
   type NativeEventKind,
   type NativeQueuedEvent,
   type PointerSnapshot,
@@ -68,11 +70,12 @@ export function decodeQueuedEvent(
     : "";
   const keyCode = v.getUint32(20, true);
   const code = keys.codeFromKeyCode(keyCode);
+  const modifiers = v.getUint32(12, true);
   return {
     type: v.getUint32(0, true) as NativeEventKind,
     button: v.getUint32(4, true),
     buttons: v.getUint32(8, true),
-    modifiers: v.getUint32(12, true),
+    modifiers,
     clickCount: v.getUint32(16, true),
     keyCode,
     clientX: v.getFloat32(24, true),
@@ -91,7 +94,8 @@ export function decodeQueuedEvent(
     key: keys.keyFromEvent(keyCode, chars),
     code,
     location: locationFromCode(code),
-    repeat: false,
+    repeat: (modifiers & MOD_REPEAT) !== 0,
+    isComposing: (modifiers & MOD_COMPOSING) !== 0,
   };
 }
 

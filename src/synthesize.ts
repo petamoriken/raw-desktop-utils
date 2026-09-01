@@ -1,4 +1,6 @@
 import {
+  CompositionEvent,
+  type CompositionEventInit,
   KeyboardEvent,
   type KeyboardEventInit,
   MouseEvent,
@@ -15,6 +17,16 @@ import {
   BUTTON_SECONDARY,
   buttonFromBit,
   effectivePressure,
+  MOD_ALT,
+  MOD_CAPS,
+  MOD_COMPOSING,
+  MOD_CTRL,
+  MOD_META,
+  MOD_REPEAT,
+  MOD_SHIFT,
+  NATIVE_EVENT_COMPOSITION_END,
+  NATIVE_EVENT_COMPOSITION_START,
+  NATIVE_EVENT_COMPOSITION_UPDATE,
   type NativeQueuedEvent,
   type PointerSnapshot,
 } from "./types.ts";
@@ -40,13 +52,14 @@ const BUTTON_BITS = [1, 4, 2, 8, 16];
 
 function modifiers(flags: number): Pick<
   MouseEventInit,
-  "shiftKey" | "ctrlKey" | "altKey" | "metaKey"
+  "shiftKey" | "ctrlKey" | "altKey" | "metaKey" | "capsLock"
 > {
   return {
-    shiftKey: (flags & 1) !== 0,
-    ctrlKey: (flags & 2) !== 0,
-    altKey: (flags & 4) !== 0,
-    metaKey: (flags & 8) !== 0,
+    shiftKey: (flags & MOD_SHIFT) !== 0,
+    ctrlKey: (flags & MOD_CTRL) !== 0,
+    altKey: (flags & MOD_ALT) !== 0,
+    metaKey: (flags & MOD_META) !== 0,
+    capsLock: (flags & MOD_CAPS) !== 0,
   };
 }
 
@@ -284,7 +297,7 @@ function queuedToSnapshot(
     screenX: ev.screenX,
     screenY: ev.screenY,
     buttons: ev.buttons,
-    modifiers: ev.modifiers,
+    modifiers: ev.modifiers & ~(MOD_REPEAT | MOD_COMPOSING),
     pressure: ev.pressure >= 0 ? ev.pressure : base.pressure,
     tiltX: ev.tiltX,
     tiltY: ev.tiltY,
@@ -326,9 +339,29 @@ function fireKey(
     location: ev.location,
     keyCode: ev.keyCode,
     repeat: ev.repeat,
+    isComposing: ev.isComposing,
     ...modifiers(ev.modifiers),
   };
   out.push(new KeyboardEvent(type, init));
+}
+
+function fireComposition(
+  out: SynthesizedEvent[],
+  ev: NativeQueuedEvent,
+  opts: SynthesizeOptions,
+) {
+  const type = ev.type === NATIVE_EVENT_COMPOSITION_START
+    ? "compositionstart"
+    : ev.type === NATIVE_EVENT_COMPOSITION_UPDATE
+    ? "compositionupdate"
+    : "compositionend";
+  const init: CompositionEventInit = {
+    bubbles: true,
+    cancelable: ev.type === NATIVE_EVENT_COMPOSITION_START,
+    view: opts.view ?? null,
+    data: ev.key,
+  };
+  out.push(new CompositionEvent(type, init));
 }
 
 /**
@@ -356,6 +389,14 @@ export function synthesize(
   for (const ev of queued) {
     if (ev.type === 4 || ev.type === 5) {
       fireKey(out, ev, opts);
+      continue;
+    }
+    if (
+      ev.type === NATIVE_EVENT_COMPOSITION_START ||
+      ev.type === NATIVE_EVENT_COMPOSITION_UPDATE ||
+      ev.type === NATIVE_EVENT_COMPOSITION_END
+    ) {
+      fireComposition(out, ev, opts);
       continue;
     }
     const snap = queuedToSnapshot(state, ev);

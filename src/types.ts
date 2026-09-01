@@ -27,6 +27,12 @@ export const MOD_SHIFT = 1;
 export const MOD_CTRL = 2;
 export const MOD_ALT = 4;
 export const MOD_META = 8;
+/** `getModifierState("CapsLock")`. */
+export const MOD_CAPS = 16;
+/** Key event only: `KeyboardEvent.repeat`. */
+export const MOD_REPEAT = 64;
+/** Key event only: `KeyboardEvent.isComposing`. */
+export const MOD_COMPOSING = 128;
 
 export type NativePointerKind = 0 | 1 | 2;
 
@@ -70,13 +76,19 @@ export const NATIVE_EVENT_POINTER_UP = 2;
 export const NATIVE_EVENT_WHEEL = 3;
 export const NATIVE_EVENT_KEY_DOWN = 4;
 export const NATIVE_EVENT_KEY_UP = 5;
+export const NATIVE_EVENT_COMPOSITION_START = 6;
+export const NATIVE_EVENT_COMPOSITION_UPDATE = 7;
+export const NATIVE_EVENT_COMPOSITION_END = 8;
 
 export type NativeEventKind =
   | typeof NATIVE_EVENT_POINTER_DOWN
   | typeof NATIVE_EVENT_POINTER_UP
   | typeof NATIVE_EVENT_WHEEL
   | typeof NATIVE_EVENT_KEY_DOWN
-  | typeof NATIVE_EVENT_KEY_UP;
+  | typeof NATIVE_EVENT_KEY_UP
+  | typeof NATIVE_EVENT_COMPOSITION_START
+  | typeof NATIVE_EVENT_COMPOSITION_UPDATE
+  | typeof NATIVE_EVENT_COMPOSITION_END;
 
 /** Discrete OS event drained from the native queue (down/up/wheel/key). */
 export type NativeQueuedEvent = {
@@ -104,6 +116,7 @@ export type NativeQueuedEvent = {
   /** `KeyboardEvent.location`, derived from `code`. */
   location: number;
   repeat: boolean;
+  isComposing: boolean;
 };
 
 /** HTML `Window` geometry in the same logical space as `getSize()`. */

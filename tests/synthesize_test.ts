@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "@std/assert";
 import {
+  type CompositionEvent,
   type KeyboardEvent,
   MouseEvent,
   PointerEvent,
@@ -10,6 +11,9 @@ import {
   BUTTONS_PRIMARY,
   BUTTONS_SECONDARY,
   emptySnapshot,
+  NATIVE_EVENT_COMPOSITION_END,
+  NATIVE_EVENT_COMPOSITION_START,
+  NATIVE_EVENT_COMPOSITION_UPDATE,
   NATIVE_EVENT_KEY_DOWN,
   NATIVE_EVENT_POINTER_DOWN,
   NATIVE_EVENT_POINTER_UP,
@@ -61,9 +65,17 @@ function queued(
     code: "",
     location: 0,
     repeat: false,
+    isComposing: false,
     ...partial,
   };
 }
+
+Deno.test("snapshot CapsLock reaches getModifierState", () => {
+  const { events } = synthesize(null, snap({ modifiers: 16 }));
+  const ev = events[0] as PointerEvent;
+  assertEquals(ev.getModifierState("CapsLock"), true);
+  assertEquals(ev.getModifierState("Accel"), false);
+});
 
 Deno.test("first sample inside fires enter events", () => {
   const { events } = synthesize(null, snap({ clientX: 10, clientY: 20 }));
@@ -352,4 +364,48 @@ Deno.test("a queued key carries KeyboardEvent.location", () => {
   ]);
   assertEquals(typesOf(events), ["keydown"]);
   assertEquals((events[0] as KeyboardEvent).location, 2);
+});
+
+Deno.test("a queued key carries repeat, isComposing, and CapsLock", () => {
+  const { events } = synthesize(snap(), snap(), [
+    queued({
+      type: NATIVE_EVENT_KEY_DOWN,
+      key: "a",
+      code: "KeyA",
+      repeat: true,
+      isComposing: true,
+      modifiers: 16, // MOD_CAPS
+    }),
+  ]);
+  const ev = events[0] as KeyboardEvent;
+  assertEquals(ev.repeat, true);
+  assertEquals(ev.isComposing, true);
+  assertEquals(ev.getModifierState("CapsLock"), true);
+});
+
+Deno.test("queued composition events become CompositionEvent", () => {
+  const { events } = synthesize(snap(), snap(), [
+    queued({
+      type: NATIVE_EVENT_COMPOSITION_START,
+      key: "か",
+    }),
+    queued({
+      type: NATIVE_EVENT_COMPOSITION_UPDATE,
+      key: "かん",
+    }),
+    queued({
+      type: NATIVE_EVENT_COMPOSITION_END,
+      key: "漢",
+    }),
+  ]);
+  assertEquals(typesOf(events), [
+    "compositionstart",
+    "compositionupdate",
+    "compositionend",
+  ]);
+  assertEquals((events[0] as CompositionEvent).data, "か");
+  assertEquals((events[0] as CompositionEvent).cancelable, true);
+  assertEquals((events[1] as CompositionEvent).data, "かん");
+  assertEquals((events[1] as CompositionEvent).cancelable, false);
+  assertEquals((events[2] as CompositionEvent).data, "漢");
 });
