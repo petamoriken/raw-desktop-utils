@@ -1,5 +1,4 @@
-//! PCM output sink. JS owns the Web Audio graph; this crate only plays
-//! interleaved f32 through the default output device.
+//! PCM sink. JS owns the graph; this plays interleaved f32.
 
 use std::ffi::c_void;
 use std::ptr;

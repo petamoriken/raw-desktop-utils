@@ -1,9 +1,5 @@
 /// <reference path="../src/desktop.d.ts" />
-/**
- * Attach to a raw `Deno.BrowserWindow` and print Pointer Events.
- *
- *   deno desktop --allow-ffi --allow-read --allow-write --allow-run --allow-env examples/basic.ts
- */
+/** `deno desktop --allow-ffi --allow-read --allow-write --allow-run --allow-env examples/basic.ts` */
 import { attach } from "../mod.ts";
 
 const TITLE = "raw-desktop-utils example";

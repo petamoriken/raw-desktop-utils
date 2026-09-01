@@ -1,22 +1,17 @@
 # raw-desktop-utils
 
 Utilities for [`deno desktop`](https://docs.deno.com/runtime/desktop/) raw
-`BrowserWindow`s: attach an input session, poll OS pointer and key events as DOM
-events, and drive the loop with `requestAnimationFrame`.
+`BrowserWindow`s. `attach(window)` returns an `InputSession`. Each `poll()`
+reads the OS pointer and the queued click / wheel / key events, then dispatches
+the same event types a browser would. Listen on the **session**, not on
+`BrowserWindow`.
 
-`attach(window)` returns an `InputSession`. Each `poll()` reads the OS pointer
-and the queued click / wheel / key events through FFI, then dispatches the same
-`PointerEvent` / `MouseEvent` / `WheelEvent` / `KeyboardEvent` shapes a browser
-would. Listen on the **session**, not on `BrowserWindow` (the window can still
-emit incomplete mouse events and double-fire).
-
-Drive the loop with `input.requestAnimationFrame` — the runtime's rAF when it
-exists, otherwise a 60 Hz polyfill. Closing the session cancels pending frames.
+Also a standalone
+[Web Audio](https://developer.mozilla.org/docs/Web/API/Web_Audio_API) subset
+(`AudioContext` and nodes). It does not need a window.
 
 macOS (AppKit), Windows (Win32) and Linux (X11, or Wayland when
-`WAYLAND_DISPLAY` is set) are implemented. Linux `.so` files are built with
-Docker when the host is not Linux
-(`deno task build:native -- build --target aarch64-unknown-linux-gnu`).
+`WAYLAND_DISPLAY` is set) are implemented.
 
 ## Install
 
@@ -32,9 +27,8 @@ import { attach } from "jsr:@petamoriken/raw-desktop-utils/macos";
 ```
 
 Permissions: `--allow-ffi --allow-read --allow-write --allow-env`. The package
-loads a committed prebuilt (`native/prebuilt/`) so a `deno desktop` /
-`deno compile` host does not need `cargo`. Refresh the prebuilt in this repo
-with `deno task build:native -- build`.
+loads a committed prebuilt (`native/prebuilt/`). Refresh it in this repo with
+`deno task build:native -- build`.
 
 ## Usage
 
@@ -57,73 +51,84 @@ function frame(_time: number) {
 input.requestAnimationFrame(frame);
 ```
 
-`addEventListener` is typed like the DOM: `"pointermove"` gives a
-`PointerEvent`, `"wheel"` a `WheelEvent`, `"keydown"` a `KeyboardEvent`.
-`input.requestAnimationFrame` / `input.cancelAnimationFrame` match the HTML
-`Window` methods. The session also exposes the same geometry as a `Window`:
-`devicePixelRatio`, `screenX` / `screenY` (`screenLeft` / `screenTop`),
-`innerWidth` / `innerHeight`, `outerWidth` / `outerHeight`, and `input.screen`
-(`Screen extends EventTarget`). `screen` fires `change` when the monitor work
-area changes between polls.
-
 `attach` options:
 
-| Option            | Meaning                                                                                                                                                     |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `title`           | Locate the native content view by window title (required on macOS unless you pass `native`). Title search works on macOS, Windows and X11, but not Wayland. |
-| `native`          | Existing `NSView*` / `HWND` / X11 window / `wl_surface*`.                                                                                                   |
-| `display`         | Wayland `wl_display*` (`getNativeWindow().displayHandle`). Optional if the surface can yield it.                                                            |
-| `target`          | Extra `EventTarget` that also receives copies of each event.                                                                                                |
-| `mouseEvents`     | Also fire `mousedown` / `click` / `contextmenu` (default `true`).                                                                                           |
-| `autoPoll`        | Interval in ms; omit to poll yourself.                                                                                                                      |
-| `locateTimeoutMs` | How long to wait for the window to appear (default 500).                                                                                                    |
+| Option            | Meaning                                                                         |
+| ----------------- | ------------------------------------------------------------------------------- |
+| `title`           | Locate the content view by title. Works on macOS, Windows and X11, not Wayland. |
+| `native`          | Existing `NSView*` / `HWND` / X11 window / `wl_surface*`.                       |
+| `display`         | Wayland `wl_display*` (`getNativeWindow().displayHandle`).                      |
+| `target`          | Extra `EventTarget` that also receives copies of each event.                    |
+| `mouseEvents`     | Also fire `mousedown` / `click` / `contextmenu` (default `true`).               |
+| `autoPoll`        | Interval in ms; omit to poll yourself.                                          |
+| `locateTimeoutMs` | How long to wait for the window to appear (default 500).                        |
 
-`attach` finds the content view from `options.native` or `title` first. It only
-calls `window.getNativeWindow()` when those fail (or on Linux, to pick up a
-Wayland `displayHandle`). On macOS `deno desktop` raw, `getNativeWindow()` can
-panic off the main thread, so a title or an existing `NSView*` is the supported
-path.
+`attach` finds the view from `options.native` or `title` first. It only calls
+`window.getNativeWindow()` when those fail (or on Linux, for a Wayland
+`displayHandle`). Prefer a title or an existing handle on macOS; see
+[Known issues in deno desktop](#known-issues-in-deno-desktop).
 
-Coordinates use a **top-left** origin in logical (point) pixels of the content
-view, the same space as `window.getSize()`. That matches CSS `clientX` /
-`clientY`. `devicePixelRatio` is the physical backing size of that space (Retina
-`2`, Windows unscaled `1`). On macOS the helper stays in screen space and flips
-Y; it does not call `convertPoint` / `isFlipped` on winit views, which invert
-hit tests. On Windows client pixels are reported unscaled: whatever the host
-does with the requested size, `GetClientRect` and `getSize()` agree (the webview
-backend keeps a 640x480 window 640x480 physical at 150%, the raw backend makes
-it 960x720 and reports 960x720).
+## API
 
-## Events
+The public types match these Web APIs. Follow the MDN pages for fields and event
+names (the locale prefix is omitted so MDN redirects to the reader's language).
 
-From a live snapshot plus the native queue:
+### Input
 
-- `pointerover` / `pointerenter` / `pointermove` / `pointerdown` / `pointerup` /
-  `pointerout` / `pointerleave`
-- compatibility `mouse*` , `click`, `dblclick`, `auxclick`, `contextmenu`
-- `wheel`
-- `keydown` / `keyup`
-- `compositionstart` / `compositionupdate` / `compositionend`
+- [`EventTarget`](https://developer.mozilla.org/docs/Web/API/EventTarget) /
+  [`addEventListener`](https://developer.mozilla.org/docs/Web/API/EventTarget/addEventListener)
+- [`UIEvent`](https://developer.mozilla.org/docs/Web/API/UIEvent)
+- [`MouseEvent`](https://developer.mozilla.org/docs/Web/API/MouseEvent)
+  (`click`, `dblclick`, `auxclick`, `contextmenu`, `mouse*`)
+- [`PointerEvent`](https://developer.mozilla.org/docs/Web/API/PointerEvent)
+- [`WheelEvent`](https://developer.mozilla.org/docs/Web/API/WheelEvent)
+- [`KeyboardEvent`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent)
+  ([`key`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/key),
+  [`code`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/code),
+  [`repeat`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/repeat),
+  [`isComposing`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/isComposing),
+  [`getModifierState`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/getModifierState))
+- [`CompositionEvent`](https://developer.mozilla.org/docs/Web/API/CompositionEvent)
+- [`Window.requestAnimationFrame`](https://developer.mozilla.org/docs/Web/API/Window/requestAnimationFrame)
+  /
+  [`cancelAnimationFrame`](https://developer.mozilla.org/docs/Web/API/Window/cancelAnimationFrame)
+- Window geometry:
+  [`devicePixelRatio`](https://developer.mozilla.org/docs/Web/API/Window/devicePixelRatio),
+  [`screenX`](https://developer.mozilla.org/docs/Web/API/Window/screenX) /
+  [`screenY`](https://developer.mozilla.org/docs/Web/API/Window/screenY)
+  (`screenLeft` / `screenTop`),
+  [`innerWidth`](https://developer.mozilla.org/docs/Web/API/Window/innerWidth) /
+  [`innerHeight`](https://developer.mozilla.org/docs/Web/API/Window/innerHeight),
+  [`outerWidth`](https://developer.mozilla.org/docs/Web/API/Window/outerWidth) /
+  [`outerHeight`](https://developer.mozilla.org/docs/Web/API/Window/outerHeight)
+- [`Screen`](https://developer.mozilla.org/docs/Web/API/Screen) (`input.screen`;
+  fires `change` when the work area changes between polls)
 
-Composition events come from the OS IME, so they follow what the host window
-allows. macOS reports them from marked text. Windows reads IMM32, which stays
-quiet until `deno desktop` builds its window with IME enabled — winit turns IME
-off by default and there is no option for it yet. Linux never reports them: both
-backends watch another client's window from their own connection, and preedit
-never leaves the client that owns the focused surface. `KeyboardEvent`
-everywhere carries `repeat`, `isComposing`, and `getModifierState("CapsLock")`
-(Wayland has no `repeat`: the compositor sends none).
+### Audio
 
-The public exports are `attach`, `InputSession`, `Screen`, the DOM constructors
-(`PointerEvent`, `MouseEvent`, `WheelEvent`, `KeyboardEvent`,
-`CompositionEvent`, `UIEvent`), and a Web Audio subset (`AudioContext`,
-`AudioBuffer`, nodes). Platform key tables and inspect internals stay private.
+Standalone export. `new AudioContext()` starts
+[`suspended`](https://developer.mozilla.org/docs/Web/API/AudioContext/state);
+`await ctx.resume()` opens the default output. There is no user-gesture gate.
 
-## Audio
+- [`AudioContext`](https://developer.mozilla.org/docs/Web/API/AudioContext)
+  ([`renderSizeHint`](https://developer.mozilla.org/docs/Web/API/AudioContext/renderSizeHint)
+  /
+  [`renderQuantumSize`](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/renderQuantumSize))
+- [`AudioBuffer`](https://developer.mozilla.org/docs/Web/API/AudioBuffer)
+- [`AudioBufferSourceNode`](https://developer.mozilla.org/docs/Web/API/AudioBufferSourceNode)
+- [`GainNode`](https://developer.mozilla.org/docs/Web/API/GainNode)
+- [`OscillatorNode`](https://developer.mozilla.org/docs/Web/API/OscillatorNode)
+- [`BiquadFilterNode`](https://developer.mozilla.org/docs/Web/API/BiquadFilterNode)
+- [`AnalyserNode`](https://developer.mozilla.org/docs/Web/API/AnalyserNode)
+- [`StereoPannerNode`](https://developer.mozilla.org/docs/Web/API/StereoPannerNode)
+- [`AudioDestinationNode`](https://developer.mozilla.org/docs/Web/API/AudioDestinationNode)
+- [`AudioListener`](https://developer.mozilla.org/docs/Web/API/AudioListener)
+- [`AudioParam`](https://developer.mozilla.org/docs/Web/API/AudioParam)
+- [`PeriodicWave`](https://developer.mozilla.org/docs/Web/API/PeriodicWave)
 
-`AudioContext` is a standalone export. It does not need `attach()` or a window.
-`new AudioContext()` starts `suspended`; `await ctx.resume()` opens the default
-output device. There is no user-gesture gate.
+Factory methods (`createGain`, …) wrap the constructors. There is no
+[`decodeAudioData`](https://developer.mozilla.org/docs/Web/API/BaseAudioContext/decodeAudioData)
+yet — build an `AudioBuffer` from PCM.
 
 ```ts
 import {
@@ -146,38 +151,95 @@ src.connect(ctx.destination);
 src.start();
 ```
 
-`renderSizeHint` is the Web Audio 1.1 option (`"default"` / omitted → 128, a
-positive integer asks for that quantum, `"hardware"` lets the implementation
-pick). The chosen size is `ctx.renderQuantumSize` and stays fixed. Numeric hints
-must be in `[1, floor(6 * sampleRate)]`.
+## Differences from the standard
 
-v1 nodes: `AudioBufferSourceNode`, `GainNode`, `OscillatorNode`,
-`BiquadFilterNode`, `AnalyserNode`, `StereoPannerNode`. Factory methods
-(`createGain`, …) wrap the constructors. There is no `decodeAudioData` yet —
-build an `AudioBuffer` from PCM.
+Coordinates use a **top-left** origin in logical pixels of the content view, the
+same space as `window.getSize()` and CSS
+[`clientX`](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientX) /
+[`clientY`](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientY).
 
-## Native ABI
+[`getModifierState`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/getModifierState)
+answers `Alt`, `AltGraph`, `Control`, `Meta`, `Shift`, `CapsLock`, and `Accel`
+(`Meta` on macOS, `Control` elsewhere). `capsLock` on `MouseEventInit` /
+`KeyboardEventInit` is an extension used to seed that bit.
 
-The helper is a Rust `cdylib` (`native/rdu`). macOS is AppKit: a local NSEvent
-monitor plus a Combined Session button sampler for synthesized clicks. It does
-not request Accessibility or Input Monitoring. Windows is Win32: window lookup
-through `EnumWindows`, live state from `GetCursorPos` / `GetAsyncKeyState`, and
-discrete events from a thread-local `WH_GETMESSAGE` hook on the window's own
-thread plus raw input registered with `RIDEV_INPUTSINK`, so the window procedure
-is left alone and wheel and key events still arrive when the host puts its
-content in another process (WebView2 does). Linux is X11 or Wayland (same
-`WAYLAND_DISPLAY` rule as laufey_winit).
+Composition events follow what the host window allows. See
+[Known issues in deno desktop](#known-issues-in-deno-desktop).
+
+### macOS
+
+- `devicePixelRatio` is the window `backingScaleFactor` (Retina is `2`).
+- The helper stays in screen space and flips Y. It does not call `convertPoint`
+  / `isFlipped` on winit views, which invert hit tests.
+- Composition is read from marked text (`hasMarkedText` / `NSTextInputContext`).
+- Title search works. Prefer `title` or `native` over `getNativeWindow()`.
+
+### Windows
+
+- Client pixels are reported **unscaled**. `GetClientRect` and `getSize()`
+  already agree, so `devicePixelRatio` is `1`. Do not divide by
+  `GetDpiForWindow`.
+- `KeyboardEvent.code` is derived from a virtual key, not a scan code: `OEM_*`
+  entries assume a US-style layout, and a numpad key with NumLock off arrives as
+  its navigation key (`Home`, not `Numpad7`). `key` still comes from the active
+  layout.
+- No pressure or tilt (`WM_POINTER` is not enabled).
+- Title search works.
+
+### Linux
+
+- X11: coordinates are already top-left; `devicePixelRatio` is `1`. Title search
+  works. Caps Lock comes from `LockMask`.
+- Wayland: cannot list other clients — pass `options.native` /
+  `getNativeWindow().windowHandle` and `displayHandle`. No global position
+  (`screenX` / `outer*` stay `0`; inner size falls back to `getSize()`). The
+  compositor sends no key repeats, so `KeyboardEvent.repeat` is always false.
+- Neither backend reports composition: preedit never leaves the client that owns
+  the focused surface.
+- `KeyboardEvent.code` is empty until a key map exists; `key` is the UTF-8
+  character from the native event.
+
+## Known issues in deno desktop
+
+These are host bugs, not this library. Start from the two tickets below; the
+others are linked from their Related sections.
+
+- [denoland/deno#36752](https://github.com/denoland/deno/issues/36752) — Windows
+  raw IME is off (`ImmGetContext` is null). winit's default is
+  `set_ime_allowed(false)`, and `deno desktop` never turns it on. WebView2
+  composes; raw never does. The same default hits the other raw backends: macOS
+  still delivers keydowns, but marked text / composition UI usually never
+  attach; Linux still delivers keys, but XIM / `zwp_text_input` preedit never
+  sits on the window. CJK text in a raw window is not possible on any OS until
+  the host enables IME.
+- [denoland/deno#36738](https://github.com/denoland/deno/issues/36738) — macOS
+  raw `getNativeWindow()` panics off the main thread
+  (`can only access NSView on the main thread`). That is also why this library
+  locates the view by title / `native` first.
+  - [denoland/deno#36594](https://github.com/denoland/deno/issues/36594) —
+    `deno desktop` cannot launch the raw backend on `aarch64-apple-darwin` (no
+    `.app` bundle). `deno task example` wraps `laufey_winit` as `hit-test.app`
+    as a workaround.
+  - [denoland/deno#36001](https://github.com/denoland/deno/issues/36001) —
+    Windows raw WebGPU `present()` panics (`RefCell already mutably borrowed`).
+
+`BrowserWindow` can still emit incomplete mouse events and double-fire; listen
+on the session. Raw winit `requestAnimationFrame` does not tick unless something
+presents — drive `poll()` yourself if you are not presenting.
+
+## Native helper
+
+The helper is a Rust `cdylib` (`native/rdu`). Runtime code embeds
+`native/prebuilt/<os>-<arch>.{dylib,dll,so}` and writes it to `TMPDIR`.
 
 ```sh
 deno task build:native -- build
 deno task build:native -- build --target aarch64-apple-darwin
 deno task build:native -- build --target aarch64-unknown-linux-gnu
-# or, for x86_64 Linux from a Mac:
 deno task build:native -- build --target x86_64-unknown-linux-gnu
 ```
 
-That writes `native/prebuilt/<os>-<arch>.{dylib,dll,so}`. Runtime code embeds
-those bytes and writes them to `TMPDIR` before `dlopen`.
+Linux `.so` files are built with Docker when the host is not Linux.
 
 ## License
 

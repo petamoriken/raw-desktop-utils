@@ -4,11 +4,7 @@ import type { KeyTranslator } from "./types.ts";
 export type { KeyTranslator } from "./types.ts";
 export { locationFromCode } from "./shared.ts";
 
-/**
- * TODO(linux): Map X11 keysyms / evdev KEY_* codes onto UI Events
- * `KeyboardEvent.code`. Until then, fall back to the UTF-8 character
- * from the native event.
- */
+/** TODO: X11 keysyms / evdev KEY_* → `KeyboardEvent.code`. */
 export function codeFromLinuxKeyCode(_keyCode: number): string {
   return "";
 }

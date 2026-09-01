@@ -1,5 +1,3 @@
-/** Materialize an embedded native library into TMPDIR and dlopen it. */
-
 export function checksum(bytes: Uint8Array): string {
   let sum = 2166136261;
   for (let i = 0; i < bytes.length; i++) {
@@ -16,10 +14,7 @@ export function cachePath(outputName: string, digest: string): string {
   return `${dir}${sep}${outputName}-${digest}`;
 }
 
-/**
- * `file:` URL to a native path. `URL.pathname` keeps a leading slash and
- * percent escapes, so on Windows it is not a path a process can `cd` into.
- */
+/** `file:` URL → native path (`URL.pathname` is not usable on Windows). */
 export function fileUrlToPath(url: URL): string {
   const decoded = decodeURIComponent(url.pathname);
   if (Deno.build.os !== "windows") return decoded;
@@ -35,7 +30,7 @@ export async function materializeLibrary(
     const stat = await Deno.stat(out);
     if (stat.isFile && stat.size === bytes.byteLength) return out;
   } catch {
-    // write
+    // missing
   }
   await Deno.writeFile(out, bytes);
   return out;
@@ -45,7 +40,6 @@ export function rustCrateDir(): URL {
   return new URL("../../native/rdu/", import.meta.url);
 }
 
-/** Host triple used by cargo / rustc, e.g. aarch64-apple-darwin. */
 export function rustHostTriple(): string {
   const arch = Deno.build.arch === "x86_64" ? "x86_64" : Deno.build.arch;
   switch (Deno.build.os) {

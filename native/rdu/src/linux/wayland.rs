@@ -1,16 +1,6 @@
-//! Wayland backend for in-process Deno desktop (winit / laufey_winit).
-//!
-//! A second Wayland connection cannot see another client's surfaces. We
-//! wrap the app's `wl_display` and dispatch a dedicated event queue so we
-//! do not steal winit's default queue.
-//!
-//! Debian bookworm's libwayland is 1.21, so `wl_proxy_get_display` (1.23)
-//! is not available at link time. Prefer `rdu_set_display` / JS
-//! `displayHandle`. Otherwise recover the display from the `wl_proxy`
-//! layout, or `dlsym` the 1.23 accessor when the host library is newer.
-//!
-//! `find_window(title)` cannot enumerate other clients. Pass the
-//! `wl_surface*` via `attach` / `options.native` or `getNativeWindow()`.
+//! Wayland backend. Wraps the app's `wl_display` on a dedicated queue.
+//! Cannot see other clients — pass `wl_surface*` / `displayHandle`.
+//! Debian bookworm libwayland is 1.21; prefer `rdu_set_display`.
 
 use std::collections::VecDeque;
 use std::ffi::c_void;
@@ -81,8 +71,7 @@ fn button_from_linux(code: u32) -> Option<(u32, u32)> {
     }
 }
 
-/// xkb modifier indices: Shift 0, Lock 1, Control 2, Mod1 3, Mod4 6. Caps Lock is
-/// a locked modifier, not a depressed one.
+/// xkb: Shift 0, Lock 1, Control 2, Mod1 3, Mod4 6. Caps Lock is locked, not depressed.
 fn mods_from_xkb(depressed: u32, locked: u32) -> u32 {
     let mut m = 0;
     if depressed & (1 << 0) != 0 {
@@ -321,7 +310,6 @@ fn lookup_wl_proxy_get_display() -> Option<GetDisplayFn> {
     })
 }
 
-/// `wl_object` is two pointers + `u32 id`. `wl_display *` follows it.
 fn display_from_proxy_layout(proxy: *mut wl_proxy) -> *mut wl_display {
     let ptr_size = std::mem::size_of::<*mut c_void>();
     let offset = ptr_size * 2
@@ -360,8 +348,7 @@ fn setup(surface: *mut c_void) -> bool {
     if display_ptr.is_null() {
         return false;
     }
-    // Guest mode: do not close the app's display when we detach.
-    // Do not roundtrip — that would race winit on the shared socket.
+    // Guest display: no close on detach, no roundtrip (races winit).
     let backend = unsafe { Backend::from_foreign_display(display_ptr.cast()) };
     let conn = Connection::from_backend(backend);
     let mut queue = conn.new_event_queue();
@@ -409,7 +396,7 @@ pub(crate) fn prefer_wayland() -> bool {
     std::env::var_os("WAYLAND_DISPLAY").is_some_and(|v| !v.is_empty())
 }
 
-/// X11 XIDs are 32-bit ids stored in a pointer. Wayland surfaces are real pointers.
+/// X11 XIDs fit in 32 bits; Wayland surfaces are real pointers.
 pub(crate) fn looks_like_wayland_surface(ptr: *mut c_void) -> bool {
     let n = ptr as usize;
     n > u32::MAX as usize
@@ -481,8 +468,6 @@ pub(crate) unsafe fn snapshot(view_ptr: *mut c_void, out: *mut Snapshot) -> i32 
             tilt_y: 0.0,
             twist: 0.0,
             pointer_type: PTR_MOUSE,
-            // Wayland cannot see global position or another client's size.
-            // The session falls back to `getSize()`; ratio stays 1.
             device_pixel_ratio: 1.0,
             window_x: 0.0,
             window_y: 0.0,

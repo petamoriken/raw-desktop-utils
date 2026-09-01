@@ -1,4 +1,4 @@
-//! C ABI for raw-desktop-utils. Built as a cdylib and loaded via Deno FFI.
+//! C ABI, loaded via Deno FFI.
 
 mod abi;
 mod audio;

@@ -1,4 +1,4 @@
-/** DOM `MouseEvent.buttons` bits. Matches AppKit `NSEvent.pressedMouseButtons`. */
+/** `MouseEvent.buttons` bits. */
 export const BUTTONS_NONE = 0;
 export const BUTTONS_PRIMARY = 1;
 export const BUTTONS_SECONDARY = 2;
@@ -6,7 +6,7 @@ export const BUTTONS_AUXILIARY = 4;
 export const BUTTONS_BACK = 8;
 export const BUTTONS_FORWARD = 16;
 
-/** DOM `MouseEvent.button` values. */
+/** `MouseEvent.button` values. */
 export const BUTTON_PRIMARY = 0;
 export const BUTTON_AUXILIARY = 1;
 export const BUTTON_SECONDARY = 2;
@@ -36,7 +36,7 @@ export const MOD_COMPOSING = 128;
 
 export type NativePointerKind = 0 | 1 | 2;
 
-/** Live pointer sample read from the OS. Coordinates use a top-left origin. */
+/** Live OS pointer sample. Top-left origin, same space as `getSize()`. */
 export type PointerSnapshot = {
   valid: boolean;
   inside: boolean;
@@ -47,15 +47,11 @@ export type PointerSnapshot = {
   screenY: number;
   viewWidth: number;
   viewHeight: number;
-  /** Physical backing pixels per logical (`getSize` / `clientX`) pixel. */
   devicePixelRatio: number;
-  /** Outer window origin in top-left screen space (`Window.screenX`). */
   windowX: number;
   windowY: number;
-  /** Outer window size including chrome (`Window.outerWidth`). */
   outerWidth: number;
   outerHeight: number;
-  /** Monitor that contains the window (`Screen.width` / `height`). */
   screenWidth: number;
   screenHeight: number;
   availLeft: number;
@@ -90,7 +86,6 @@ export type NativeEventKind =
   | typeof NATIVE_EVENT_COMPOSITION_UPDATE
   | typeof NATIVE_EVENT_COMPOSITION_END;
 
-/** Discrete OS event drained from the native queue (down/up/wheel/key). */
 export type NativeQueuedEvent = {
   type: NativeEventKind;
   button: number;
@@ -113,13 +108,11 @@ export type NativeQueuedEvent = {
   pointerType: PointerType;
   key: string;
   code: string;
-  /** `KeyboardEvent.location`, derived from `code`. */
   location: number;
   repeat: boolean;
   isComposing: boolean;
 };
 
-/** HTML `Window` geometry in the same logical space as `getSize()`. */
 export type WindowMetrics = {
   devicePixelRatio: number;
   screenX: number;
@@ -130,7 +123,6 @@ export type WindowMetrics = {
   outerHeight: number;
 };
 
-/** CSSOM View `Screen` geometry in the same logical space as `getSize()`. */
 export type ScreenMetrics = {
   width: number;
   height: number;
@@ -145,19 +137,12 @@ export type DesktopWindow = EventTarget & {
 };
 
 export type AttachOptions = {
-  /** Window title used to locate the native content view. */
   title?: string;
-  /** Existing native view / `wl_surface*` / X11 window, if already known. */
   native?: Deno.PointerValue;
-  /** Wayland `wl_display*` (`getNativeWindow().displayHandle`). Optional. */
   display?: Deno.PointerValue;
-  /** Extra target that also receives synthesized events. */
   target?: EventTarget;
-  /** Also fire compatibility mouse events. Default true. */
   mouseEvents?: boolean;
-  /** Poll automatically on this interval (ms). Off by default. */
   autoPoll?: number;
-  /** How long to wait for the native window to appear. Default 500ms. */
   locateTimeoutMs?: number;
 };
 
@@ -173,7 +158,6 @@ export function nativeFromPointerType(type: PointerType): NativePointerKind {
   return 0;
 }
 
-/** Map a `buttons` bit to the DOM `button` value. */
 export function buttonFromBit(bit: number): number {
   if (bit === BUTTONS_PRIMARY) return BUTTON_PRIMARY;
   if (bit === BUTTONS_SECONDARY) return BUTTON_SECONDARY;
@@ -183,7 +167,6 @@ export function buttonFromBit(bit: number): number {
   return BUTTON_PRIMARY;
 }
 
-/** Map a DOM `button` value to the matching `buttons` bit. */
 export function bitFromButton(button: number): number {
   if (button === BUTTON_PRIMARY) return BUTTONS_PRIMARY;
   if (button === BUTTON_SECONDARY) return BUTTONS_SECONDARY;
@@ -237,7 +220,6 @@ export function emptyMetrics(): WindowMetrics {
   };
 }
 
-/** Merge a native sample with `window.getSize()` when the helper omitted size. */
 export function windowMetricsFrom(
   snap: PointerSnapshot,
   size: readonly [number, number],

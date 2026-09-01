@@ -1,22 +1,7 @@
 /// <reference path="../src/desktop.d.ts" />
 /**
- * Two logical rectangles. Hover and click are logged; there is no native
- * blit because raw has none that is portable.
- *
- * Hover comes from the pointer snapshot; clicks come from the native queue.
- * Synthesized keys are not captured; this helper does not request Input
- * Monitoring or Accessibility.
- *
- * Close chrome is left to `deno desktop`. Listen for `BrowserWindow`
- * `"close"` (and `isClosed()`): a live timer keeps the process up after the
- * window is gone, so the handler must `Deno.exit`. Do not run this file
- * with bare `deno desktop` on aarch64-apple-darwin (no raw `.app` template);
- * package it with `laufey_winit`:
- *
- *   deno task example
- *
- * Elsewhere `deno task example` just runs `deno desktop` against this file.
- * JSON lines go to `$RDU_HIT_TEST_LOG` (default `$TMPDIR/rdu-hit-test.log`).
+ * Two logical rectangles. Hover / click are logged.
+ * Run via `deno task example` (wraps `laufey_winit` on aarch64-apple-darwin).
  */
 import { attach } from "../mod.ts";
 
@@ -88,9 +73,7 @@ function quit() {
   Deno.exit(0);
 }
 
-// Raw winit has a host rAF that never ticks unless something presents.
-// Drive poll ourselves so hover / click stay live. Chrome clicks are not
-// handled here: `BrowserWindow` "close" / `isClosed()` own that.
+// Raw winit rAF does not tick unless something presents.
 const pollTimer = setInterval(() => {
   if (windowIsClosed()) {
     quit();

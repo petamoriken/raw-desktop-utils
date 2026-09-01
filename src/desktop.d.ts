@@ -1,4 +1,3 @@
-/** Types for `deno desktop` APIs that only exist in the desktop runtime. */
 export {};
 
 declare global {

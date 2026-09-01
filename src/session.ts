@@ -67,15 +67,10 @@ export class InputSession extends EventTarget {
     return this.#last;
   }
 
-  /** CSSOM View `window.screen`. Updated by `poll()` / `metrics()` / `snapshot()`. */
   get screen(): Screen {
     return this.#screen;
   }
 
-  /**
-   * Physical backing pixels per logical (`getSize` / `clientX`) pixel.
-   * Same role as `window.devicePixelRatio`.
-   */
   get devicePixelRatio(): number {
     return this.#currentMetrics().devicePixelRatio;
   }
@@ -112,14 +107,12 @@ export class InputSession extends EventTarget {
     return this.#currentMetrics().outerHeight;
   }
 
-  /** Live `Window` geometry. Also refreshes {@linkcode Screen}. */
   metrics(): WindowMetrics {
     this.#assertOpen();
     const snap = this.#native.snapshot(this.#handle);
     return this.#remember(snap);
   }
 
-  /** Read the current OS pointer sample without synthesizing events. */
   snapshot(): PointerSnapshot {
     this.#assertOpen();
     const next = this.#native.snapshot(this.#handle);
@@ -127,16 +120,9 @@ export class InputSession extends EventTarget {
     return next;
   }
 
-  /**
-   * Sample native state, turn the delta into UI Events / Pointer Events,
-   * and dispatch them on this session (and `options.target`, if set).
-   */
   poll(): PointerSnapshot {
     this.#assertOpen();
-    // Drain the queue before sampling, so the snapshot is never older than the
-    // events it is reconciled against. The other order lets a press that lands
-    // between the two calls arrive with `buttons` still 0, which replays the
-    // press as a release and then presses again on the next poll.
+    // Queue first: a later snapshot would replay a mid-poll press as up then down.
     const queued = this.#native.pollEvents(this.#handle);
     const next = this.#native.snapshot(this.#handle);
     const { events, clickCounts } = synthesize(this.#prev, next, queued, {
@@ -270,15 +256,13 @@ export async function attach(
   return attachWith(await loadNative(), win, options);
 }
 
-/** Attach using an already-loaded backend (platform subpath entries). */
+/** Attach with an already-loaded backend (platform subpath entries). */
 export async function attachWith(
   native: NativeBackend,
   win: DesktopWindow,
   options: AttachOptions = {},
 ): Promise<InputSession> {
-  // Prefer an explicit handle or a title search. `getNativeWindow()` is last
-  // because on macOS `deno desktop` raw, that call can panic off the main
-  // thread (`raw-window-metal`: "can only access NSView on the main thread").
+  // Title / `native` first. macOS raw `getNativeWindow()` can panic off-main.
   let handle = options.native ?? null;
   let display = options.display ?? null;
   if (!handle) handle = await locateHandle(native, options);

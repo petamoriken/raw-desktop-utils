@@ -140,7 +140,6 @@ export class AudioNode {
     );
   }
 
-  /** Pull this node's outputs for `quantum`, filling one buffer per output. */
   pull(quantum: number): Float32Array[][] {
     if (this.#cachedQuantum === quantum) return this.#cached;
     if (this.#walking) {

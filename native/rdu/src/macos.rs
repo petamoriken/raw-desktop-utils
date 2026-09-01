@@ -1,10 +1,5 @@
-//! AppKit backend. Coordinates stay in screen space with a top-left origin.
-//!
-//! Discrete clicks and keys come from a local NSEvent monitor. Automation
-//! (Quartz posts) updates `mouseLocation` but often never enters this app's
-//! NSEvent queue, and `NSEvent.pressedMouseButtons` is HID-only. A 4 ms
-//! Combined Session button sampler fills that gap for clicks. Do not install
-//! a CGEvent tap or global monitor: those need Input Monitoring / Accessibility.
+//! AppKit backend. Screen space, top-left origin. Local NSEvent monitor plus a
+//! 4 ms Combined Session button sampler. No CGEvent tap or global monitor.
 
 use std::ffi::{c_void, CStr};
 use std::ptr::{self, NonNull};
@@ -46,8 +41,7 @@ struct Tablet {
     pointer_type: u32,
 }
 
-/// Last few queued events, used to drop the same click when both the
-/// local monitor and the Combined Session sampler observe it.
+/// Drops a click both the local monitor and the sampler reported.
 const RECENT_CAP: usize = 8;
 const DEDUPE_NS: u128 = 8_000_000;
 
@@ -154,9 +148,7 @@ fn on_main<F: FnOnce()>(work: F) {
     }
 }
 
-/// First off-main call: try the main queue briefly. `deno test` blocks the
-/// main thread on the test, so `exec_sync` deadlocks; after a short wait we
-/// run inline. `deno desktop` pumps AppKit, so the async hop finishes.
+/// Probe the main queue; `deno test` has no pump so we fall back to inline.
 fn hop_probe<F: FnOnce()>(work: F) {
     let taken = Arc::new(AtomicBool::new(false));
     let done = Arc::new(AtomicBool::new(false));
@@ -279,9 +271,7 @@ fn marked_from_object(obj: &AnyObject) -> Option<(bool, String)> {
     Some((true, marked_string(obj)))
 }
 
-/// IME marked text on the first responder or the current input client.
-/// Read before the key is delivered, so it is the session state this key
-/// occurs in (`KeyboardEvent.isComposing`).
+/// Marked text before the key is delivered (`KeyboardEvent.isComposing`).
 fn marked_state(view: &NSView) -> (bool, String) {
     if let Some(window) = view.window() {
         if let Some(responder) = window.firstResponder() {
@@ -377,7 +367,7 @@ fn emit_composition(view: &NSView, mtm: MainThreadMarker) {
     }
 }
 
-/// After IME has seen the key (next main-queue turn).
+/// Recheck marked text after IME has seen the key.
 fn schedule_composition_check() {
     let job: Box<dyn FnOnce() + Send> = Box::new(|| {
         let attached = match STATE.lock() {
@@ -470,7 +460,6 @@ struct Mapped {
     inside: bool,
 }
 
-/// `Window` / `Screen` geometry in top-left logical points.
 fn window_chrome(view: &NSView, mtm: MainThreadMarker, view_w: f32, view_h: f32) -> Chrome {
     let Some(window) = view.window() else {
         return Chrome {
@@ -519,8 +508,7 @@ fn map_screen(
         screen_x: screen.x as f32,
         screen_y: (desktop.max().y - screen.y) as f32,
         client_x: (screen.x - view_on_screen.min().x) as f32,
-        // Stay in screen space. convertPoint / isFlipped on winit views
-        // does not agree with window-base Y.
+        // Screen-space Y. convertPoint / isFlipped on winit views invert hits.
         client_y: (view_on_screen.max().y - screen.y) as f32,
         view_w: view_on_screen.size.width as f32,
         view_h: view_on_screen.size.height as f32,
@@ -553,8 +541,7 @@ fn event_for_attached(event: &NSEvent, view: &NSView, mtm: MainThreadMarker) -> 
     }
     let t = event.r#type();
     if t == NSEventType::KeyDown || t == NSEventType::KeyUp || t == NSEventType::FlagsChanged {
-        // Raw winit windows are often main but not key. Take keys when
-        // this app is active so a focused game still sees Enter / letters.
+        // winit windows are often main but not key; take keys while the app is active.
         return ours.isKeyWindow()
             || ours.isMainWindow()
             || NSApplication::sharedApplication(mtm).isActive();

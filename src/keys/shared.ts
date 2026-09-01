@@ -1,4 +1,4 @@
-/** UI Events `KeyboardEvent.code` → `key` for non-character keys. */
+/** `KeyboardEvent.code` → `key` for non-character keys. */
 const CODE_TO_KEY: Record<string, string> = {
   Enter: "Enter",
   NumpadEnter: "Enter",

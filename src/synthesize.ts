@@ -35,17 +35,10 @@ export type SynthesizeOptions = {
   mouseEvents?: boolean;
   view?: EventTarget | null;
   pointerId?: number;
-  /**
-   * `detail` of the press each held button is still in, by button index.
-   * Threaded back from the previous {@linkcode SynthResult} so a release can
-   * report the count of the press it ends — that is what turns the second
-   * `click` of a double click into a `dblclick`, and a press and its release
-   * do not have to arrive from the same source or in the same poll.
-   */
+  /** Per-button `detail` from the last poll, so a release can report the press it ends. */
   clickCounts?: ClickCounts;
 };
 
-/** `detail` per held button index. */
 export type ClickCounts = Readonly<Record<number, number>>;
 
 const BUTTON_BITS = [1, 4, 2, 8, 16];
@@ -269,8 +262,6 @@ function applyButtonDelta(
   for (const bit of BUTTON_BITS) {
     if (added & bit) {
       const button = buttonFromBit(bit);
-      // A snapshot only sees that the button is down, never how many times it
-      // has been pressed; the queue is the only source of a real count.
       counts[button] ??= 1;
       fireButtonDown(out, prev, next, button, counts[button], opts);
     }
@@ -364,13 +355,7 @@ function fireComposition(
   out.push(new CompositionEvent(type, init));
 }
 
-/**
- * Turn a previous snapshot, a fresh snapshot, and any queued OS events
- * into UI Events / Pointer Events.
- *
- * Queued down/up/wheel/key events are authoritative. The snapshot fills
- * in hover, movement, and any button edges the queue missed.
- */
+/** Queue edges are authoritative; the snapshot fills hover, move, and missed buttons. */
 export function synthesize(
   prev: PointerSnapshot | null,
   next: PointerSnapshot,
@@ -412,8 +397,7 @@ export function synthesize(
     if (moved(state, snap) && (snap.inside || state.inside)) {
       fireMove(out, state, snap, opts);
     }
-    // A snapshot can beat the queue to the same edge when the press lands
-    // between two polls. Whichever saw it first wins; the other is a repeat.
+    // Drop a queued edge the snapshot already reported.
     const bit = bitFromButton(ev.button);
     if (ev.type === 1) {
       if (state.buttons & bit) {

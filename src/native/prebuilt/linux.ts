@@ -5,7 +5,6 @@ import linuxX8664 from "../../../native/prebuilt/linux-x86_64.so" with {
   type: "bytes",
 };
 
-/** Embedded Linux helpers. Vite / esbuild can drop this module on other OSes. */
 export function linuxPrebuilt(): Uint8Array {
   if (Deno.build.arch === "aarch64") return linuxAarch64;
   if (Deno.build.arch === "x86_64") return linuxX8664;

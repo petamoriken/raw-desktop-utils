@@ -1,5 +1,4 @@
-//! Linux dispatcher: Wayland when `WAYLAND_DISPLAY` is set (same as
-//! laufey_winit), otherwise X11.
+//! Wayland when `WAYLAND_DISPLAY` is set, otherwise X11.
 
 use std::ffi::{c_char, c_void};
 

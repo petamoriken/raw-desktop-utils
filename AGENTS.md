@@ -4,6 +4,16 @@ Utilities for `deno desktop` raw windows (input session, DOM-shaped events,
 requestAnimationFrame) plus a standalone Web Audio subset. Intended for JSR.
 Comments, commit messages, and this file are English.
 
+`README.md` is the public doc: MDN links for the Web-shaped API (URLs without
+`/en-US`, so MDN redirects by locale), then OS-specific differences from the
+standard, then known `deno desktop` host bugs. Those host bugs start at
+[denoland/deno#36752](https://github.com/denoland/deno/issues/36752) (raw IME
+off) and [denoland/deno#36738](https://github.com/denoland/deno/issues/36738)
+(`getNativeWindow()` panics off-main on macOS); Related on those tickets reaches
+#36594 (no raw `.app` on aarch64-apple-darwin) and #36001 (Windows raw WebGPU
+`present()` panic). Do not re-explain MDN types in the README or in source
+comments.
+
 ## Commands
 
 - Check: `deno task check` (`lint` + `fmt --check` + `test`)
@@ -36,14 +46,14 @@ take `--allow-run`.
   `AudioContextOptions.renderSizeHint` / `renderQuantumSize` (default 128).
   After changing `native/rdu/src/audio.rs`, rebuild the prebuilt. ABI is 3.
 - `InputSession.poll()` diffs a native snapshot plus a queued event list into
-  Pointer / Mouse / Wheel / Keyboard events. Listeners go on the **session**,
-  not `BrowserWindow` (that source can double-fire). On macOS the queue is a
-  local NSEvent monitor plus a 4 ms Combined Session button and key sampler. Do
-  not add a CGEvent tap or global monitor (those need Input Monitoring /
-  Accessibility). Quartz posts update `mouseLocation` (hover works) but often
-  skip the local monitor and `NSEvent.pressedMouseButtons`. Off-main AppKit work
-  hops to the main queue when it pumps, and runs inline under `deno test` so
-  `exec_sync` cannot deadlock.
+  Pointer / Mouse / Wheel / Keyboard / Composition events. Listeners go on the
+  **session**, not `BrowserWindow` (that source can double-fire). On macOS the
+  queue is a local NSEvent monitor plus a 4 ms Combined Session button and key
+  sampler. Do not add a CGEvent tap or global monitor (those need Input
+  Monitoring / Accessibility). Quartz posts update `mouseLocation` (hover works)
+  but often skip the local monitor and `NSEvent.pressedMouseButtons`. Off-main
+  AppKit work hops to the main queue when it pumps, and runs inline under
+  `deno test` so `exec_sync` cannot deadlock.
 - Coordinates are content-view logical pixels, **top-left** origin (`clientX` /
   `clientY`), in the same space as `window.getSize()`.
 - Native helper is the Rust cdylib `native/rdu`. macOS is AppKit (`macos.rs`);
@@ -55,15 +65,18 @@ take `--allow-run`.
   `getNativeWindow().windowHandle` (and `displayHandle`).
 - `attach` locates the view by `options.native` or title first. It must not call
   `BrowserWindow.getNativeWindow()` on macOS unless those fail: the raw backend
-  panics off the main thread (`can only access NSView on the main
-  thread`).
-  Linux still falls back to `getNativeWindow` for the Wayland display pointer.
+  panics off the main thread (`can only access NSView on the main thread`;
+  denoland/deno#36738). Linux still falls back to `getNativeWindow` for the
+  Wayland display pointer.
 - Runtime always loads `native/prebuilt/<os>-<arch>.*` (embedded as bytes,
   written to `TMPDIR`). It does not invoke `cargo`. JSR `publish.include` is
   `native/prebuilt/**` only.
 
 ## Hard rules
 
+- Comments are short and only explain a non-obvious constraint. Do not restate
+  the identifier, narrate the implementation, or paste README / MDN text into
+  the source. A long "why" belongs in this file or in `README.md`.
 - After changing `native/rdu`, run `deno task build:native -- build` and commit
   the updated prebuilt. A same-sized cache file in `TMPDIR` is not proof it is
   current (path includes a checksum).
@@ -97,10 +110,9 @@ take `--allow-run`.
   `GCS_COMPSTR`) and diffed in `rdu_poll_events`, not taken from `WM_IME_*`. An
   idle context answers 0 bytes exactly like a composition with no text, so
   "composing" means the string is non-empty. Do not associate an IME context on
-  the host's behalf: `deno desktop` builds its window through winit with IME
-  off, and `ImmAssociateContextEx` from here gives the window a context that the
-  host's window procedure still refuses to compose into. Composition needs
-  `set_ime_allowed(true)` upstream; until then these events simply never fire.
+  the host's behalf: winit IME is off (denoland/deno#36752), and
+  `ImmAssociateContextEx` from here still will not compose. Until the host calls
+  `set_ime_allowed(true)`, these events never fire.
 - Linux cannot report composition at all. Both backends observe another client's
   window from their own connection, and preedit lives between that client and
   the IM server: X11 XIM is a private conversation with the IM window, and
@@ -138,4 +150,5 @@ This is not a browser. After input, hit-test, or native ABI changes:
 3. For real pointer/click behavior, run `deno task example` and hover/click the
    content view. Close chrome is left to `deno desktop` (`BrowserWindow`
    `"close"` + `Deno.exit`). On aarch64-apple-darwin that task wraps
-   `laufey_winit` as `hit-test.app`; elsewhere it runs `deno desktop`.
+   `laufey_winit` as `hit-test.app` (denoland/deno#36594); elsewhere it runs
+   `deno desktop`.

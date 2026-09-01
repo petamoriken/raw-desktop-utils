@@ -1,14 +1,5 @@
 #!/usr/bin/env -S deno run --allow-run --allow-read --allow-write --allow-env
-/**
- * Build the Rust cdylib and copy it into native/prebuilt/.
- *
- *   deno task build:native
- *   deno task build:native -- build
- *   deno task build:native -- build --target aarch64-apple-darwin
- *   deno task build:native -- build --target aarch64-unknown-linux-gnu
- *
- * Linux triples on a non-Linux host use Docker (rust:1-bookworm).
- */
+/** Build the Rust cdylib into `native/prebuilt/`. Linux triples on a non-Linux host use Docker. */
 
 import {
   cargoArtifactName,

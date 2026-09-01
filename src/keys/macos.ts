@@ -4,7 +4,7 @@ import type { KeyTranslator } from "./types.ts";
 export type { KeyTranslator } from "./types.ts";
 export { locationFromCode } from "./shared.ts";
 
-/** macOS virtual key codes → UI Events `KeyboardEvent.code`. */
+/** macOS virtual key → `KeyboardEvent.code`. */
 const MAC_CODE: Record<number, string> = {
   0: "KeyA",
   1: "KeyS",

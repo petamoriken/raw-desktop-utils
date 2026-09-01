@@ -33,7 +33,6 @@ pub const KEY_BYTES: usize = 32;
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Snapshot {
-    // Pointer sample
     pub flags: u32,
     pub client_x: f32,
     pub client_y: f32,
@@ -46,7 +45,6 @@ pub struct Snapshot {
     pub tilt_y: f32,
     pub twist: f32,
     pub pointer_type: u32,
-    // Window (`devicePixelRatio`, `screenX`/`Y`, `inner*`/`outer*`)
     pub device_pixel_ratio: f32,
     pub window_x: f32,
     pub window_y: f32,
@@ -54,7 +52,6 @@ pub struct Snapshot {
     pub inner_h: f32,
     pub outer_w: f32,
     pub outer_h: f32,
-    // Screen (monitor that contains the window)
     pub screen_w: f32,
     pub screen_h: f32,
     pub avail_x: f32,
@@ -63,7 +60,6 @@ pub struct Snapshot {
     pub avail_h: f32,
 }
 
-/// Window chrome plus the monitor work area. Not part of the C layout.
 #[derive(Clone, Copy)]
 pub struct Chrome {
     pub device_pixel_ratio: f32,

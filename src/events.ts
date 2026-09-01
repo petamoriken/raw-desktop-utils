@@ -98,10 +98,6 @@ function modifierState(
   }
 }
 
-/**
- * UI Events `UIEvent` stand-in. Deno desktop raw mode has no DOM
- * `UIEvent` / `PointerEvent` constructors, so the library supplies them.
- */
 export class UIEvent extends Event {
   readonly #view: EventTarget | null;
   readonly #detail: number;
@@ -558,7 +554,7 @@ export type SynthesizedEvent =
   | KeyboardEvent
   | CompositionEvent;
 
-/** Rebuild an event so it can be dispatched to a second target. */
+/** Clone so a second `EventTarget` can dispatch without sharing `target` / canceled. */
 export function cloneSynthesized(event: SynthesizedEvent): SynthesizedEvent {
   if (event instanceof PointerEvent) {
     return new PointerEvent(event.type, copyPointer(event));

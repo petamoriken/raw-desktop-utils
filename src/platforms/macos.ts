@@ -1,9 +1,4 @@
-/**
- * macOS-only entry. Import this from Vite / esbuild when the bundle
- * should not contain Windows or Linux backends or key tables:
- *
- *   import { attach } from "@petamoriken/raw-desktop-utils/macos";
- */
+/** macOS-only entry. Bundlers that import this drop the other OS backends. */
 import { loadMacos } from "../native/macos.ts";
 import { attachWith, type InputSession } from "../session.ts";
 import type { AttachOptions, DesktopWindow } from "../types.ts";

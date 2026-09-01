@@ -1,4 +1,3 @@
-/** Deno pretty-print hook used by `Deno.inspect` / `console.log`. */
 export const kCustomInspect = Symbol.for("Deno.customInspect");
 
 export type InspectFn = (
@@ -6,11 +5,7 @@ export type InspectFn = (
   options?: Deno.InspectOptions,
 ) => string;
 
-/**
- * Same idea as Deno's `createFilteredInspectProxy`: only read instance
- * state when the receiver is a real branded instance. Logging
- * `Foo.prototype` must not throw on private fields.
- */
+/** Brand-check before reading fields so `console.log(Foo.prototype)` does not throw. */
 export function inspectBranded(
   branded: boolean,
   tag: string,

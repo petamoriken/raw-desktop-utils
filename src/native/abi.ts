@@ -1,8 +1,4 @@
-/**
- * Packed native snapshot. All fields are 4-byte aligned (100 bytes):
- * pointer (`flags` … `pointer_type`), window (`device_pixel_ratio` …
- * `outer_h`), screen (`screen_w` … `avail_h`).
- */
+/** Packed `abi.rs` Snapshot: 4-byte fields, 100 bytes. */
 export const SNAPSHOT_BYTES = 100;
 export const QUEUED_EVENT_BYTES = 108;
 export const QUEUED_KEY_BYTES = 32;

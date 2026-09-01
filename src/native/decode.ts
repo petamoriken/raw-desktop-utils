@@ -23,7 +23,6 @@ export function decodeSnapshot(buf: Uint8Array): PointerSnapshot {
   if (buf.byteLength < SNAPSHOT_BYTES) return emptySnapshot();
   const v = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   const flags = v.getUint32(0, true);
-  // Offsets match `abi.rs` Snapshot: pointer, then window, then screen.
   return {
     valid: (flags & FLAG_VALID) !== 0,
     inside: (flags & FLAG_INSIDE) !== 0,
@@ -73,9 +72,7 @@ export function decodeQueuedEvent(
   const code = keys.codeFromKeyCode(keyCode);
   const modifiers = v.getUint32(12, true);
   const type = v.getUint32(0, true) as NativeEventKind;
-  // A composition event carries its `data` in the same field, and that is
-  // already the text: naming it as a key would turn an empty composition into
-  // `"Unidentified"`.
+  // Composition `data` is already text; do not run it through the key table.
   const composition = type >= NATIVE_EVENT_COMPOSITION_START;
   return {
     type,

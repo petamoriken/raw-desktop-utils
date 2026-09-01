@@ -1,23 +1,7 @@
-//! Win32 backend. Client coordinates are already top-left, and they are
-//! reported unscaled: whatever `deno desktop` does with the requested size,
-//! `GetClientRect` and `getSize()` agree (the webview backend keeps a 640x480
-//! window 640x480 physical at 150%, the raw backend makes it 960x720 and says
-//! so), so the content view's own pixels *are* its logical pixels here. Do not
-//! divide by `GetDpiForWindow` — that would put `clientX` / `clientY` in a
-//! different space from `getSize()` and from the drawing surface.
-//!
-//! Input is captured with a thread-local `WH_GETMESSAGE` hook on the thread
-//! that owns the window, which mirrors the macOS local event monitor: the
-//! window procedure is left untouched and messages still reach winit.
-//!
-//! That hook alone is not enough. A `deno desktop` window is a WebView2 host
-//! (`LaufeyWebView2`), and the window actually under the cursor belongs to a
-//! separate `msedgewebview2` process, so real wheel and key messages are queued
-//! to *that* process and this thread never sees them. Raw input registered with
-//! `RIDEV_INPUTSINK` fixes it: `WM_INPUT` is delivered to our own window no
-//! matter who has focus, and the same hook picks it up. Legacy messages are
-//! still read for hosts that do deliver them, so `push` drops an event the two
-//! paths both reported.
+//! Win32 backend. Client pixels are unscaled (same space as `getSize()`); do
+//! not divide by `GetDpiForWindow`. Thread-local `WH_GETMESSAGE` plus
+//! `RIDEV_INPUTSINK` so WebView2 still delivers wheel and keys. `push` drops
+//! a duplicate from both paths.
 
 use std::ffi::{c_void, CStr};
 use std::mem::size_of;
@@ -87,8 +71,7 @@ struct Queue {
     count: usize,
 }
 
-/// Last few queued events, used to drop the same input when raw input and a
-/// legacy `WM_*` message both report it. Mirrors the macOS sampler dedupe.
+/// Drops an event both raw input and a legacy `WM_*` reported.
 const RECENT_CAP: usize = 8;
 const DEDUPE: Duration = Duration::from_millis(8);
 
@@ -121,10 +104,7 @@ impl Recent {
     }
 }
 
-/// Where and when a button last went down, so raw input can tell a double
-/// click from two clicks the way `WM_LBUTTONDBLCLK` would. `count` outlives the
-/// press because the release has to report it too: `dblclick` is emitted on the
-/// second *up*, and Win32 never puts a count on a `WM_*BUTTONUP`.
+/// Last press per button. Release reports the same `count` (`dblclick` is on up).
 #[derive(Clone, Copy)]
 struct Click {
     at: Option<Instant>,
@@ -144,12 +124,10 @@ impl Click {
     }
 }
 
-/// DOM button indices we track: primary, auxiliary, secondary, X1, X2.
 const BUTTONS: usize = 5;
 
 struct State {
     queue: Queue,
-    /// Attached `HWND`, kept as `isize` so `State` stays `Send`.
     attached: isize,
     hook: isize,
     hook_thread: u32,
@@ -157,15 +135,9 @@ struct State {
     recent: [Recent; RECENT_CAP],
     recent_n: usize,
     clicks: [Click; BUTTONS],
-    /// Buttons whose press we claimed, so their release is ours to report even
-    /// if the pointer has since left the view.
     held: u32,
-    /// Virtual keys currently down, one bit per VK, so a second keydown for a
-    /// key that never came up is `KeyboardEvent.repeat`.
     keys_down: [u64; 4],
     composing: bool,
-    /// Last IME composition string, so a change is an update and the text is
-    /// still available to report on `compositionend`.
     marked: [u8; KEY_BYTES],
     marked_len: u32,
 }
@@ -207,8 +179,7 @@ fn attached_hwnd() -> Option<HWND> {
     }
 }
 
-/// Toggle state (Caps Lock and friends). There is no async form of this, so it
-/// is the one bit that stays synchronized to this thread's message queue.
+/// Caps Lock toggle. No async form; this is queue-synchronized.
 fn key_toggled(vk: i32) -> bool {
     unsafe { GetKeyState(vk) & 1 != 0 }
 }
@@ -217,10 +188,7 @@ fn async_key_down(vk: i32) -> bool {
     unsafe { (GetAsyncKeyState(vk) as u16) & 0x8000 != 0 }
 }
 
-/// Live modifier state. `GetKeyState` is synchronized to the messages *this*
-/// thread has taken off its queue, and raw input runs ahead of those (under
-/// WebView2 they never arrive at all), so the physical state is the honest
-/// answer for both paths: a Shift keydown must already report `shiftKey`.
+/// Live modifiers via `GetAsyncKeyState` (`GetKeyState` lags raw input).
 fn current_modifiers() -> u32 {
     let mut m = 0;
     if async_key_down(VK_SHIFT as i32) {
@@ -245,8 +213,7 @@ fn buttons_swapped() -> bool {
     unsafe { GetSystemMetrics(SM_SWAPBUTTON) != 0 }
 }
 
-/// Live `MouseEvent.buttons`. `VK_LBUTTON` tracks the physical button, so the
-/// primary / secondary bits are swapped back to agree with the WM_* messages.
+/// Live `buttons`. `VK_LBUTTON` is physical; swap back to match WM_*.
 fn current_buttons() -> u32 {
     let (primary, secondary) = if buttons_swapped() {
         (VK_RBUTTON, VK_LBUTTON)
@@ -272,7 +239,6 @@ fn current_buttons() -> u32 {
     buttons
 }
 
-/// `MouseEvent.buttons` from the `MK_*` flags carried by a mouse message.
 fn buttons_from_mk(wparam: WPARAM) -> u32 {
     let mk = (wparam & 0xFFFF) as u32;
     let mut buttons = 0;
@@ -294,7 +260,6 @@ fn buttons_from_mk(wparam: WPARAM) -> u32 {
     buttons
 }
 
-/// Modifiers a mouse message knows about, plus Alt / Meta from the key state.
 fn modifiers_from_mk(wparam: WPARAM) -> u32 {
     let mk = (wparam & 0xFFFF) as u32;
     let mut m = 0;
@@ -332,11 +297,7 @@ fn lparam_y(lparam: LPARAM) -> i32 {
     ((lparam as u32 >> 16) & 0xFFFF) as i16 as i32
 }
 
-/// Pen- and touch-generated mouse input carries a signature in the message
-/// extra info. Inside the hook the message has not been retrieved yet, so this
-/// is the previous message's extra info — close enough to label `pointerType`,
-/// and it never reports pen on a machine with no pen. Pressure and tilt would
-/// need `WM_POINTER`, which winit does not opt into.
+/// Pen/touch signature from the previous message's extra info (no `WM_POINTER`).
 fn pointer_kind_from_extra_info() -> u32 {
     let info = unsafe { GetMessageExtraInfo() } as usize;
     if info & PEN_SIGNATURE_MASK == PEN_SIGNATURE {
@@ -354,8 +315,6 @@ struct Mapped {
     screen_y: f32,
 }
 
-/// Outer chrome plus the nearest monitor. `devicePixelRatio` is 1:
-/// `GetClientRect` and `getSize()` are already unscaled device pixels.
 fn window_chrome(hwnd: HWND, view_w: f32, view_h: f32) -> Chrome {
     let root = unsafe {
         let ancestor = GetAncestor(hwnd, GA_ROOT);
@@ -413,7 +372,6 @@ fn window_chrome(hwnd: HWND, view_w: f32, view_h: f32) -> Chrome {
     chrome
 }
 
-/// Map a screen point into the attached window's client space.
 fn map_screen(hwnd: HWND, screen: POINT) -> Mapped {
     let mut client = screen;
     unsafe {
@@ -427,7 +385,6 @@ fn map_screen(hwnd: HWND, screen: POINT) -> Mapped {
     }
 }
 
-/// A client point of `from` (usually the message window) in screen space.
 fn client_to_screen(from: HWND, x: i32, y: i32) -> POINT {
     let mut point = POINT { x, y };
     unsafe {
@@ -447,8 +404,7 @@ fn same_recent(a: &Recent, ev: &QueuedEvent) -> bool {
         && (a.delta_y - ev.delta_y).abs() < 0.5
 }
 
-/// Queue one event, unless raw input and a legacy message just reported the
-/// same one. Key auto-repeat is slower than `DEDUPE`, so repeats survive.
+/// Queue unless raw input and a legacy message just reported the same event.
 fn push(state: &mut State, ev: QueuedEvent) {
     let now = Instant::now();
     let seen = state.recent[..state.recent_n].iter().any(|recent| {
@@ -487,16 +443,13 @@ fn push(state: &mut State, ev: QueuedEvent) {
     q.count += 1;
 }
 
-/// Does this message belong to the attached window (or one of its children)?
 fn message_is_ours(hwnd: HWND, msg_hwnd: HWND) -> bool {
     if msg_hwnd.is_null() {
-        // Thread messages (WM_TIMER and friends) have no window.
         return false;
     }
     msg_hwnd == hwnd || unsafe { IsChild(hwnd, msg_hwnd) != 0 }
 }
 
-/// Is the cursor over the attached view, with nothing on top of it?
 fn cursor_is_over(hwnd: HWND, cursor: POINT, mapped: &Mapped, width: f32, height: f32) -> bool {
     let in_bounds = mapped.client_x >= 0.0
         && mapped.client_y >= 0.0
@@ -505,15 +458,12 @@ fn cursor_is_over(hwnd: HWND, cursor: POINT, mapped: &Mapped, width: f32, height
     if !in_bounds {
         return false;
     }
-    // Another window on top of ours means the pointer is not over the view.
-    // The WebView2 render surface is a child of ours and still counts.
+    // WebView2's child surface still counts as ours.
     let under_cursor = unsafe { WindowFromPoint(cursor) };
     !under_cursor.is_null()
         && (under_cursor == hwnd || unsafe { IsChild(hwnd, under_cursor) != 0 })
 }
 
-/// The cursor's position over the view, or `None` when it is elsewhere.
-/// Raw input arrives even when the click was aimed at another window.
 fn cursor_over_view(hwnd: HWND) -> Option<(POINT, Mapped)> {
     let mut cursor = POINT { x: 0, y: 0 };
     if unsafe { GetCursorPos(&mut cursor) } == 0 {
@@ -538,8 +488,7 @@ fn cursor_over_view(hwnd: HWND) -> Option<(POINT, Mapped)> {
     }
 }
 
-/// Does the attached window hold the focus? WebView2 puts its context menus in
-/// owned popups, so the owner chain counts as focus too.
+/// Focus includes WebView2's owned popups.
 fn window_has_focus(hwnd: HWND) -> bool {
     let foreground = unsafe { GetForegroundWindow() };
     if foreground.is_null() {
@@ -580,14 +529,11 @@ fn set_raw_devices(hwnd: HWND, flags: u32) -> bool {
     }
 }
 
-/// Ask for `WM_INPUT` on this window even while another process has focus.
-/// Without `RIDEV_NOLEGACY` the host keeps its own input untouched.
 fn register_raw_input(hwnd: HWND) -> bool {
     set_raw_devices(hwnd, RIDEV_INPUTSINK)
 }
 
 fn unregister_raw_input() {
-    // `RIDEV_REMOVE` requires a null target.
     set_raw_devices(ptr::null_mut(), RIDEV_REMOVE);
 }
 
@@ -603,7 +549,6 @@ fn read_raw_input(handle: HRAWINPUT) -> Option<RAWINPUT> {
             size_of::<RAWINPUTHEADER>() as u32,
         )
     };
-    // `GetRawInputData` reports failure as -1.
     if read == u32::MAX {
         None
     } else {
@@ -611,8 +556,6 @@ fn read_raw_input(handle: HRAWINPUT) -> Option<RAWINPUT> {
     }
 }
 
-/// DOM button for a raw button pair. Raw input reports the *physical* button,
-/// so a swapped mouse has to be mapped back the way `current_buttons` does.
 fn raw_dom_button(physical_left: bool) -> u32 {
     if physical_left != buttons_swapped() {
         0
@@ -621,8 +564,6 @@ fn raw_dom_button(physical_left: bool) -> u32 {
     }
 }
 
-/// `detail` for a press, counting a second click in the system's double-click
-/// time and slop as 2. Reporting 2 consumes the streak, like `WM_LBUTTONDBLCLK`.
 fn click_count(state: &mut State, button: u32, cursor: POINT) -> u32 {
     let Some(track) = state.clicks.get_mut(button as usize) else {
         return 1;
@@ -641,7 +582,6 @@ fn click_count(state: &mut State, button: u32, cursor: POINT) -> u32 {
     track.count
 }
 
-/// The click count of the press this release ends.
 fn released_click_count(state: &State, button: u32) -> u32 {
     state
         .clicks
@@ -649,8 +589,6 @@ fn released_click_count(state: &State, button: u32) -> u32 {
         .map_or(1, |track| track.count)
 }
 
-/// Record a press a legacy `WM_*BUTTONDOWN` already counted, so its release
-/// reports the same count as one raw input counted.
 fn remember_click(state: &mut State, button: u32, count: u32) {
     if let Some(track) = state.clicks.get_mut(button as usize) {
         track.count = count;
@@ -660,7 +598,6 @@ fn remember_click(state: &mut State, button: u32, count: u32) {
 fn handle_raw_mouse(hwnd: HWND, mouse: &RAWMOUSE) {
     let flags = unsafe { mouse.Anonymous.Anonymous.usButtonFlags } as u32;
     if flags == 0 {
-        // Movement only; the snapshot already tracks the cursor.
         return;
     }
     let over = cursor_over_view(hwnd);
@@ -675,7 +612,6 @@ fn handle_raw_mouse(hwnd: HWND, mouse: &RAWMOUSE) {
         let mut ev = QueuedEvent::empty();
         ev.type_ = EV_WHEEL;
         if flags & RI_MOUSE_WHEEL != 0 {
-            // Rolling the wheel forward scrolls up, which is a negative deltaY.
             ev.delta_y = -notches * WHEEL_STEP;
         } else {
             ev.delta_x = notches * WHEEL_STEP;
@@ -708,7 +644,6 @@ fn handle_raw_mouse(hwnd: HWND, mouse: &RAWMOUSE) {
         if flags & flag == 0 {
             continue;
         }
-        // Only the primary / secondary pair follows the swap setting.
         let button = match raw_button {
             0 => raw_dom_button(true),
             2 => raw_dom_button(false),
@@ -779,8 +714,6 @@ fn handle_raw_input(hwnd: HWND, handle: HRAWINPUT) {
     }
 }
 
-/// Resolve the generic modifier virtual keys to their left / right variant so
-/// the key table can report `ShiftRight` instead of a sideless `Shift`.
 fn resolve_side(vk: u32, lparam: LPARAM) -> u32 {
     let scan = ((lparam >> 16) & 0xFF) as u32;
     let extended = (lparam >> 24) & 1 != 0;
@@ -801,15 +734,12 @@ fn resolve_side(vk: u32, lparam: LPARAM) -> u32 {
     }
 }
 
-/// UTF-8 text a key message would produce, ignoring Ctrl unless it is AltGr.
 fn characters(vk: u32, lparam: LPARAM) -> Option<String> {
     let mut keys = [0u8; 256];
     if unsafe { GetKeyboardState(keys.as_mut_ptr()) } == 0 {
         return None;
     }
-    // Same staleness as `current_modifiers`: refresh the keys that decide the
-    // character from the physical state. Caps Lock has no async form, so its
-    // toggle bit comes from the queue-synchronized `GetKeyState`.
+    // Refresh physical modifiers; Caps Lock has no async form.
     for vk in [
         VK_SHIFT, VK_LSHIFT, VK_RSHIFT, VK_CONTROL, VK_LCONTROL, VK_RCONTROL, VK_MENU, VK_LMENU,
         VK_RMENU,
@@ -829,7 +759,7 @@ fn characters(vk: u32, lparam: LPARAM) -> Option<String> {
     let scan = ((lparam >> 16) & 0xFF) as u32;
     let layout = unsafe { GetKeyboardLayout(0) };
     let mut buf = [0u16; 8];
-    // Bit 2 leaves the kernel keyboard state alone, so dead keys still work.
+    // Bit 2 leaves kernel keyboard state alone (dead keys).
     let n = unsafe {
         ToUnicodeEx(
             vk,
@@ -845,7 +775,7 @@ fn characters(vk: u32, lparam: LPARAM) -> Option<String> {
         return None;
     }
     let text = String::from_utf16_lossy(&buf[..n as usize]);
-    // Control characters are not a `KeyboardEvent.key`; let the VK table win.
+    // Control chars are not a `KeyboardEvent.key`.
     if text.chars().all(|c| (c as u32) < 0x20) {
         return None;
     }
@@ -862,17 +792,13 @@ fn set_key_text(ev: &mut QueuedEvent, text: &str) {
     ev.key_len = n as u32;
 }
 
-/// The IME composition string of the attached window, or `None` when there is
-/// no composition. Read through IMM32: Microsoft IME is a TSF text service, but
-/// the TSF-to-IMM32 bridge keeps this working for a window that, like winit's,
-/// does not implement TSF itself.
+/// IMM32 composition string, or `None` when idle / empty.
 fn composition_text(hwnd: HWND) -> Option<String> {
     let imc = unsafe { ImmGetContext(hwnd) };
     if imc.is_null() {
         return None;
     }
-    // An idle context answers 0, exactly like a composition with no text yet,
-    // so a composition only becomes observable once it has a character in it.
+    // Idle and empty composition both answer 0.
     let bytes = unsafe { ImmGetCompositionStringW(imc, GCS_COMPSTR, ptr::null_mut(), 0) };
     let text = if bytes <= 0 {
         None
@@ -897,10 +823,7 @@ fn composition_text(hwnd: HWND) -> Option<String> {
     text
 }
 
-/// Turn the IME composition state into `compositionstart` / `update` / `end`.
-/// The state is diffed rather than taken from `WM_IME_*`, for the same reason
-/// the rest of this backend leans on raw input: those messages go to whichever
-/// window the IME is attached to, and the diff also cannot double-report.
+/// Diff IMM32 state. `WM_IME_*` goes to the IME's window, not ours.
 fn emit_composition(hwnd: HWND) {
     let now = composition_text(hwnd);
     let mut state = STATE.lock().expect("rdu state");
@@ -919,8 +842,6 @@ fn emit_composition(hwnd: HWND) {
     } else if was && is && text != prev {
         push_composition(&mut state, hwnd, EV_COMPOSITION_UPDATE, &text);
     } else if was && !is {
-        // `data` is the text the session was composing; IMM32 hands the commit
-        // to the host window, not to an observer.
         push_composition(&mut state, hwnd, EV_COMPOSITION_END, &prev);
     }
 }
@@ -958,8 +879,6 @@ fn stored_marked(state: &State) -> String {
     String::from_utf8_lossy(&state.marked[..state.marked_len as usize]).into_owned()
 }
 
-/// Was this key already down? Raw input carries no repeat flag, so the answer
-/// has to come from the keys we have seen go down and not come back up.
 fn track_key(state: &mut State, vk: u32, down: bool) -> bool {
     let Some(word) = state.keys_down.get_mut((vk as usize) / 64) else {
         return false;
@@ -974,8 +893,6 @@ fn track_key(state: &mut State, vk: u32, down: bool) -> bool {
     down && was
 }
 
-/// Queue a key event. `lparam` only has to carry the scan code and the
-/// extended bit, so raw input can synthesize one.
 fn push_key(hwnd: HWND, vk: u32, lparam: LPARAM, down: bool) {
     let mut ev = QueuedEvent::empty();
     ev.type_ = if down { EV_KEY_DOWN } else { EV_KEY_UP };
@@ -983,15 +900,12 @@ fn push_key(hwnd: HWND, vk: u32, lparam: LPARAM, down: bool) {
     ev.key_code = resolve_side(vk, lparam);
     ev.buttons = current_buttons();
     ev.modifiers = current_modifiers();
-    // Read the IME now rather than trusting the last poll: during composition
-    // the IME swallows the key, but raw input sits below it and still reports.
     if composition_text(hwnd).is_some() {
         ev.modifiers |= MOD_COMPOSING;
     }
     if let Some(text) = characters(vk, lparam) {
         set_key_text(&mut ev, &text);
     }
-    // Key events carry no cursor position; use the live cursor.
     let mut cursor = POINT { x: 0, y: 0 };
     if unsafe { GetCursorPos(&mut cursor) } != 0 {
         let mapped = map_screen(hwnd, cursor);
@@ -1007,7 +921,6 @@ fn push_key(hwnd: HWND, vk: u32, lparam: LPARAM, down: bool) {
     push(&mut state, ev);
 }
 
-/// Translate one posted message into a queued event, if it is input.
 fn handle_message(msg: &MSG) {
     let Some(hwnd) = attached_hwnd() else {
         return;
@@ -1016,8 +929,6 @@ fn handle_message(msg: &MSG) {
         return;
     }
 
-    // `WM_INPUT` carries a handle, not coordinates, so it cannot fall through
-    // to the `lParam` decoding below.
     if msg.message == WM_INPUT {
         handle_raw_input(hwnd, msg.lParam as HRAWINPUT);
         return;
@@ -1026,8 +937,6 @@ fn handle_message(msg: &MSG) {
     let mut ev = QueuedEvent::empty();
     ev.pointer_type = PTR_MOUSE;
 
-    // Button messages carry client coordinates of `msg.hwnd`; wheel messages
-    // already use screen coordinates.
     let screen = match msg.message {
         WM_MOUSEWHEEL | WM_MOUSEHWHEEL => POINT {
             x: lparam_x(msg.lParam),
@@ -1077,7 +986,6 @@ fn handle_message(msg: &MSG) {
         WM_MOUSEWHEEL => {
             ev.type_ = EV_WHEEL;
             let notches = hiword(msg.wParam) as i16 as f32 / WHEEL_DELTA as f32;
-            // Rolling the wheel forward scrolls up, which is a negative deltaY.
             ev.delta_y = -notches * WHEEL_STEP;
             ev.buttons = buttons_from_mk(msg.wParam);
             ev.modifiers = modifiers_from_mk(msg.wParam);
@@ -1106,8 +1014,7 @@ fn handle_message(msg: &MSG) {
 }
 
 unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    // Only look at messages that are really being removed from the queue; a
-    // PeekMessage without PM_REMOVE would otherwise report them twice.
+    // PM_REMOVE only; PeekMessage without it would report twice.
     if code >= 0 && wparam as u32 == PM_REMOVE && !(lparam as *const MSG).is_null() {
         handle_message(unsafe { &*(lparam as *const MSG) });
     }
@@ -1213,14 +1120,11 @@ pub extern "C" fn rdu_attach(view_ptr: *mut c_void) -> i32 {
     state.keys_down = [0; 4];
     state.composing = false;
     state.marked_len = 0;
-    // Point raw input at this window even on a re-attach: the target moves with
-    // the handle, and re-registering the same usage pages is not an error.
     state.raw_input = register_raw_input(hwnd);
     if state.hook != 0 && state.hook_thread == thread {
         return 1;
     }
     remove_hook(&mut state);
-    // A thread-local hook inside this process takes a null module handle.
     let hook = unsafe { SetWindowsHookExW(WH_GETMESSAGE, Some(hook_proc), ptr::null_mut(), thread) };
     if hook.is_null() {
         state.attached = 0;
@@ -1295,7 +1199,6 @@ pub unsafe extern "C" fn rdu_snapshot(view_ptr: *mut c_void, out: *mut Snapshot)
         screen_y: mapped.screen_y,
         buttons: current_buttons(),
         modifiers: current_modifiers(),
-        // No pressure without WM_POINTER; the session falls back to buttons.
         pressure: -1.0,
         tilt_x: 0.0,
         tilt_y: 0.0,
@@ -1321,8 +1224,6 @@ pub unsafe extern "C" fn rdu_poll_events(
     if buf.is_null() || cap <= 0 {
         return 0;
     }
-    // Sample the IME before draining so a composition change made since the
-    // last poll is reported in this one.
     if let Some(hwnd) = attached_hwnd() {
         emit_composition(hwnd);
     }

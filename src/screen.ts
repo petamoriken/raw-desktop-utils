@@ -3,7 +3,6 @@ import type { ScreenMetrics } from "./types.ts";
 
 export type { ScreenMetrics } from "./types.ts";
 
-/** Same token Deno uses for `AbortSignal` / `Permissions` / `Window`. */
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
 export type ScreenInit = Partial<ScreenMetrics> & {
@@ -11,15 +10,10 @@ export type ScreenInit = Partial<ScreenMetrics> & {
   pixelDepth?: number;
 };
 
-/** Event types dispatched by {@linkcode Screen}, matching CSSOM View. */
 export interface ScreenEventMap {
   change: Event;
 }
 
-/**
- * CSSOM View `Screen` stand-in. Geometry is in the same logical space as
- * `window.getSize()` / `InputSession.innerWidth`.
- */
 export class Screen extends EventTarget {
   #width: number;
   #height: number;
@@ -70,7 +64,6 @@ export class Screen extends EventTarget {
     return this.#pixelDepth;
   }
 
-  /** Replace geometry. Returns whether any field changed. */
   replace(next: ScreenMetrics): boolean {
     const changed = this.#width !== next.width ||
       this.#height !== next.height ||

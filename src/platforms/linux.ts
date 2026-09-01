@@ -1,9 +1,4 @@
-/**
- * Linux-only entry. Import this from Vite / esbuild when the bundle
- * should not contain macOS or Windows backends:
- *
- *   import { attach } from "@petamoriken/raw-desktop-utils/linux";
- */
+/** Linux-only entry. Bundlers that import this drop the other OS backends. */
 import { loadLinux } from "../native/linux.ts";
 import { NativeUnsupportedError } from "../native/backend.ts";
 import { attachWith, type InputSession } from "../session.ts";

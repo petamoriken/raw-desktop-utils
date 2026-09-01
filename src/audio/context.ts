@@ -162,7 +162,6 @@ export class AudioContext extends EventTarget {
     return new PeriodicWave(this, { real, imag, ...constraints });
   }
 
-  /** Render `frameCount` frames into per-channel buffers (tests / offline). */
   renderFrames(frameCount: number): Float32Array[] {
     const channels = this.destination.channelCount;
     const out = silence(frameCount, channels);

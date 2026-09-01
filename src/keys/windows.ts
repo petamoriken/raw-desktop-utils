@@ -5,17 +5,8 @@ export type { KeyTranslator } from "./types.ts";
 export { locationFromCode } from "./shared.ts";
 
 /**
- * Win32 virtual-key codes → UI Events `KeyboardEvent.code`.
- *
- * The native helper resolves `VK_SHIFT` / `VK_CONTROL` / `VK_MENU` to the
- * side-specific `VK_L*` / `VK_R*` code before queueing, so both modifier
- * sides and `KeyboardEvent.location` come out right.
- *
- * Two limits follow from `code` being derived from a virtual key rather than
- * a scan code: the `OEM_*` entries assume a US-style layout, and a numpad key
- * pressed with NumLock off arrives as its navigation key (`Home`, not
- * `Numpad7`). Character keys are unaffected — `key` comes from the UTF-8 text
- * the native helper produced through the active keyboard layout.
+ * Win32 VK → `KeyboardEvent.code`. Sides are resolved natively.
+ * `OEM_*` assumes US; NumLock-off numpad arrives as navigation.
  */
 const WIN_CODE: Record<number, string> = {
   0x08: "Backspace",

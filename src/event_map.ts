@@ -6,10 +6,6 @@ import type {
   WheelEvent,
 } from "./events.ts";
 
-/**
- * Event types dispatched by {@linkcode InputSession}, matching the
- * TypeScript DOM `GlobalEventHandlersEventMap` / Pointer Events names.
- */
 export interface InputSessionEventMap {
   pointerover: PointerEvent;
   pointerenter: PointerEvent;

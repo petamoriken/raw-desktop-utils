@@ -90,11 +90,9 @@ export class AnalyserNode extends AudioNode {
     const src = inputs[0] ?? [];
     const dest = outputs[0] ?? [];
     const mono = new Float32Array(frames);
-    if (src.length === 0) {
-      // silence
-    } else if (src.length === 1) {
+    if (src.length === 1) {
       mono.set(src[0]!.subarray(0, frames));
-    } else {
+    } else if (src.length > 1) {
       for (let i = 0; i < frames; i++) {
         let s = 0;
         for (const ch of src) s += ch[i] ?? 0;

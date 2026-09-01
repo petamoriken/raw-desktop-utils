@@ -1,9 +1,4 @@
-/**
- * Utilities for `deno desktop` raw windows: attach an input session,
- * poll OS pointer and key events as DOM events, and drive the loop
- * with `requestAnimationFrame`. Also a browser-shaped Web Audio subset
- * (`AudioContext` and nodes) that does not need a window.
- */
+/** Input session + DOM-shaped events for `deno desktop` raw windows, and a standalone Web Audio subset. */
 export { attach, InputSession, Screen } from "./src/session.ts";
 export type { FrameRequestCallback, ScreenEventMap } from "./src/session.ts";
 export type { InputSessionEventMap } from "./src/event_map.ts";

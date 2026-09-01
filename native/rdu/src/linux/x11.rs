@@ -1,4 +1,4 @@
-//! X11 backend. Coordinates are already top-left (unlike AppKit).
+//! X11 backend. Coordinates are already top-left.
 
 use std::collections::VecDeque;
 use std::ffi::{c_char, c_void, CStr};
@@ -73,7 +73,6 @@ fn modifiers(mask: KeyButMask) -> u32 {
     if mask.contains(KeyButMask::MOD4) {
         m |= MOD_META;
     }
-    // X11 folds Caps Lock into the same state mask every event carries.
     if mask.contains(KeyButMask::LOCK) {
         m |= MOD_CAPS;
     }
@@ -175,8 +174,6 @@ fn work_area(conn: &RustConnection, root: Window) -> Option<(i32, i32, u32, u32)
     }
 }
 
-/// `devicePixelRatio` is 1: X11 client geometry is already the same space as
-/// `getSize()`. `screenX` / `outer*` use `_NET_FRAME_EXTENTS` when present.
 fn window_chrome(
     conn: &RustConnection,
     win: Window,

@@ -1,6 +1,4 @@
-//! Windows placeholder. Same C ABI as the macOS / Linux backends.
-//!
-//! TODO(windows): FindWindowW, GetCursorPos, GetAsyncKeyState, WH_GETMESSAGE.
+//! Fallback C ABI for unsupported targets.
 
 use std::ffi::c_void;
 use std::ptr;

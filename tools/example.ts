@@ -1,11 +1,5 @@
 #!/usr/bin/env -S deno run --allow-run --allow-read --allow-write --allow-env --allow-ffi
-/**
- * Run `examples/hit-test.ts` as a raw desktop app.
- *
- * On aarch64-apple-darwin, `deno desktop` has no raw `.app` template, so
- * this compiles the script and wraps it as `hit-test.app` around
- * `laufey_winit`. Elsewhere it just invokes `deno desktop`.
- */
+/** Run `examples/hit-test.ts`. Wraps `laufey_winit` as `.app` on aarch64-apple-darwin. */
 const root = new URL("../", import.meta.url);
 const appUrl = new URL("hit-test.app", root);
 const DESKTOP_ALLOW = [

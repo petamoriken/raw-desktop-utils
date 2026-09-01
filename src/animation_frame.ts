@@ -1,4 +1,3 @@
-/** HTML `FrameRequestCallback`. */
 export type FrameRequestCallback = (time: number) => void;
 
 type RafHost = {
@@ -19,10 +18,7 @@ function hostCaf(): ((handle: number) => void) | undefined {
   return typeof fn === "function" ? fn.bind(host) : undefined;
 }
 
-/**
- * Per-session frame pump. Uses the runtime's rAF when present,
- * otherwise a 60 Hz `setTimeout` polyfill.
- */
+/** Host rAF, or a 60 Hz `setTimeout` polyfill. */
 export class AnimationFrames {
   #nextId = 1;
   #pending = new Map<number, FrameRequestCallback>();
