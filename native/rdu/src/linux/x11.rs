@@ -27,6 +27,7 @@ struct State {
     root: Window,
     attached: Option<Window>,
     queue: VecDeque<QueuedEvent>,
+    last_sample: Option<((i16, i16), u32)>,
 }
 
 static STATE: Mutex<State> = Mutex::new(State {
@@ -34,6 +35,7 @@ static STATE: Mutex<State> = Mutex::new(State {
     root: 0,
     attached: None,
     queue: VecDeque::new(),
+    last_sample: None,
 });
 
 fn window_from_ptr(ptr: *mut c_void) -> Option<Window> {
@@ -274,6 +276,50 @@ fn start_waiter() {
     });
 }
 
+/// MotionNotify stops at the edge (the owner holds the implicit grab). Query
+/// the pointer so a drag past the window still wakes, like the macOS sampler.
+fn start_sampler() {
+    static STARTED: AtomicBool = AtomicBool::new(false);
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let _ = thread::Builder::new()
+        .name("rdu-x11-sample".into())
+        .spawn(|| loop {
+            thread::sleep(Duration::from_millis(4));
+            let changed = sample_pointer();
+            if changed {
+                crate::wakeup::notify();
+            }
+        });
+}
+
+fn sample_pointer() -> bool {
+    let Ok(mut state) = STATE.lock() else {
+        return false;
+    };
+    let Some(win) = state.attached else {
+        state.last_sample = None;
+        return false;
+    };
+    let Some(conn) = state.conn.as_ref() else {
+        return false;
+    };
+    let Ok(cookie) = conn.query_pointer(win) else {
+        return false;
+    };
+    let Ok(pointer) = cookie.reply() else {
+        return false;
+    };
+    let sample = (
+        (pointer.win_x, pointer.win_y),
+        buttons_from_mask(KeyButMask::from(pointer.mask)),
+    );
+    let changed = state.last_sample.is_some_and(|prev| prev != sample);
+    state.last_sample = Some(sample);
+    changed
+}
+
 fn drain_events(state: &mut State) {
     let Some(conn) = state.conn.as_ref() else {
         return;
@@ -430,7 +476,9 @@ pub(crate) fn attach(view_ptr: *mut c_void) -> i32 {
     }
     state.attached = Some(win);
     state.queue.clear();
+    state.last_sample = None;
     start_waiter();
+    start_sampler();
     1
 }
 

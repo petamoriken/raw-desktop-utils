@@ -268,6 +268,38 @@ Deno.test("listeners without native wakeup still pump on a frame clock", async (
   assertEquals(seen, ["pointerenter"]);
 });
 
+Deno.test("out-of-view coords drop native inside so a grab can leave", () => {
+  const backend = new FakeBackend([
+    snap({
+      clientX: 10,
+      clientY: 10,
+      buttons: 1,
+      viewWidth: 0,
+      viewHeight: 0,
+    }),
+    snap({
+      clientX: 150,
+      clientY: 10,
+      buttons: 1,
+      viewWidth: 0,
+      viewHeight: 0,
+    }),
+  ]);
+  using session = new InputSession(
+    desktopWindow(),
+    backend,
+    Deno.UnsafePointer.of(new Uint8Array(1)),
+    {},
+  );
+  const seen: string[] = [];
+  session.addEventListener("pointerout", () => seen.push("pointerout"));
+  session.addEventListener("pointermove", () => seen.push("pointermove"));
+  session.poll();
+  session.poll();
+  assertEquals(seen.includes("pointerout"), true);
+  assertEquals(seen.includes("pointermove"), true);
+});
+
 Deno.test("requestAnimationFrame polls before the callback", async () => {
   const backend = new FakeBackend([snap({ clientX: 5, clientY: 6 })]);
   using session = new InputSession(

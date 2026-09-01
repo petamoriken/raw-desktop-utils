@@ -136,7 +136,11 @@ fn start_pump() {
             let pending = STATE
                 .lock()
                 .ok()
-                .and_then(|guard| guard.as_ref().map(|wl| !wl.input.events.is_empty()))
+                .and_then(|guard| {
+                    guard.as_ref().map(|wl| {
+                        !wl.input.events.is_empty() || wl.input.buttons != 0
+                    })
+                })
                 .unwrap_or(false);
             if pending {
                 crate::wakeup::notify();

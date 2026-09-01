@@ -27,6 +27,28 @@ export type { FrameRequestCallback } from "./animation_frame.ts";
 
 const DEFAULT_LOCATE_MS = 500;
 
+/** Wayland's `inside` is seat focus; AND with the view so a grab past the edge matches the browser. */
+function applyViewBounds(
+  snap: PointerSnapshot,
+  size: readonly [number, number],
+): PointerSnapshot {
+  const viewWidth = snap.viewWidth > 0 ? snap.viewWidth : size[0];
+  const viewHeight = snap.viewHeight > 0 ? snap.viewHeight : size[1];
+  const inside = snap.inside &&
+    snap.clientX >= 0 &&
+    snap.clientY >= 0 &&
+    snap.clientX < viewWidth &&
+    snap.clientY < viewHeight;
+  if (
+    snap.viewWidth === viewWidth &&
+    snap.viewHeight === viewHeight &&
+    snap.inside === inside
+  ) {
+    return snap;
+  }
+  return { ...snap, viewWidth, viewHeight, inside };
+}
+
 export class InputSession extends EventTarget {
   readonly window: DesktopWindow;
   readonly #screen: Screen = createScreen();
@@ -119,7 +141,10 @@ export class InputSession extends EventTarget {
 
   snapshot(): PointerSnapshot {
     this.#assertOpen();
-    const next = this.#native.snapshot(this.#handle);
+    const next = applyViewBounds(
+      this.#native.snapshot(this.#handle),
+      this.window.getSize(),
+    );
     this.#remember(next);
     return next;
   }
@@ -228,7 +253,10 @@ export class InputSession extends EventTarget {
   #pollOnce(): void {
     // Queue first: a later snapshot would replay a mid-poll press as up then down.
     const queued = this.#native.pollEvents(this.#handle);
-    const next = this.#native.snapshot(this.#handle);
+    const next = applyViewBounds(
+      this.#native.snapshot(this.#handle),
+      this.window.getSize(),
+    );
     const { events, clickCounts, captured } = synthesize(
       this.#prev,
       next,

@@ -142,7 +142,11 @@ take `--allow-run`.
   comes up, and that release is not a `click`. `SynthResult.captured` carries it
   across polls next to `clickCounts`, so a drag that began in another window
   reports nothing. A queued event's `inside` is its own bounds, never a blanket
-  `true`, or a release past the edge reads as a re-entry.
+  `true`, or a release past the edge reads as a re-entry. macOS samples
+  `mouseLocation` globally. X11's implicit grab goes to the window owner, so a 4
+  ms `query_pointer` sampler wakes the drag after MotionNotify stops. Wayland
+  only sees the seat; `applyViewBounds` treats out-of-surface coords as outside
+  when the compositor keeps sending motion under the grab.
 - Close a native audio sink you opened. `AudioContext` only closes a sink it
   created itself, and a leaked one takes the process down with an access
   violation: Deno unloads the library at teardown while the audio callback is
