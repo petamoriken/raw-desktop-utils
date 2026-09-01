@@ -37,6 +37,8 @@ export type SynthesizeOptions = {
   pointerId?: number;
   /** Per-button `detail` from the last poll, so a release can report the press it ends. */
   clickCounts?: ClickCounts;
+  /** A press that started inside is still held; from the last poll. */
+  captured?: boolean;
 };
 
 export type ClickCounts = Readonly<Record<number, number>>;
@@ -127,6 +129,7 @@ export type SynthResult = {
   events: SynthesizedEvent[];
   state: PointerSnapshot;
   clickCounts: ClickCounts;
+  captured: boolean;
 };
 
 function pushPointer(
@@ -186,13 +189,28 @@ function moved(a: PointerSnapshot, b: PointerSnapshot): boolean {
     a.screenX !== b.screenX || a.screenY !== b.screenY;
 }
 
+/**
+ * A drag that began inside keeps reporting once it leaves, the way a browser
+ * keeps sending `pointermove` to the captured target with out-of-range
+ * coordinates until the button comes back up. A press that began in another
+ * window captures nothing and stays silent.
+ */
+function dragging(
+  prev: PointerSnapshot | null,
+  next: PointerSnapshot,
+  opts: SynthesizeOptions,
+): boolean {
+  return opts.captured === true &&
+    (next.buttons !== 0 || (prev?.buttons ?? 0) !== 0);
+}
+
 function fireMove(
   out: SynthesizedEvent[],
   prev: PointerSnapshot | null,
   next: PointerSnapshot,
   opts: SynthesizeOptions,
 ) {
-  if (!next.inside && !(prev?.inside)) return;
+  if (!next.inside && !prev?.inside && !dragging(prev, next, opts)) return;
   const init = pointerInit(next, prev, { button: -1, detail: 0 }, opts);
   pushPointer(out, "pointermove", init, "mousemove", opts);
 }
@@ -263,6 +281,7 @@ function applyButtonDelta(
     if (added & bit) {
       const button = buttonFromBit(bit);
       counts[button] ??= 1;
+      if (next.inside) opts.captured = true;
       fireButtonDown(out, prev, next, button, counts[button], opts);
     }
   }
@@ -282,7 +301,11 @@ function queuedToSnapshot(
 ): PointerSnapshot {
   return {
     ...base,
-    inside: true,
+    // The event is ours by construction, so bounds are the whole test. A drag
+    // that releases past the edge must not read as a re-entry, and must not
+    // turn into a `click`.
+    inside: ev.clientX >= 0 && ev.clientY >= 0 &&
+      ev.clientX < base.viewWidth && ev.clientY < base.viewHeight,
     clientX: ev.clientX,
     clientY: ev.clientY,
     screenX: ev.screenX,
@@ -364,6 +387,9 @@ export function synthesize(
 ): SynthResult {
   const out: SynthesizedEvent[] = [];
   const counts: Record<number, number> = { ...opts.clickCounts };
+  // Mutated as presses go by, so a move later in this same call already sees
+  // the capture the press established.
+  const live: SynthesizeOptions = { ...opts };
   let state = prev ? { ...prev } : null;
 
   if (!state) {
@@ -388,14 +414,14 @@ export function synthesize(
     enterLeave(out, state, snap, opts);
     if (ev.type === 3) {
       if (moved(state, snap) && (snap.inside || state.inside)) {
-        fireMove(out, state, snap, opts);
+        fireMove(out, state, snap, live);
       }
       fireWheel(out, state, snap, ev, opts);
       state = snap;
       continue;
     }
     if (moved(state, snap) && (snap.inside || state.inside)) {
-      fireMove(out, state, snap, opts);
+      fireMove(out, state, snap, live);
     }
     // Drop a queued edge the snapshot already reported.
     const bit = bitFromButton(ev.button);
@@ -406,6 +432,7 @@ export function synthesize(
       }
       const down: PointerSnapshot = { ...snap, buttons: snap.buttons | bit };
       counts[ev.button] = ev.clickCount || 1;
+      if (snap.inside) live.captured = true;
       fireButtonDown(out, state, down, ev.button, counts[ev.button], opts);
       state = down;
     } else if (ev.type === 2) {
@@ -422,14 +449,18 @@ export function synthesize(
   }
 
   enterLeave(out, state, next, opts);
-  if (state && next.inside && moved(state, next)) {
-    fireMove(out, state, next, opts);
+  if (
+    state && (next.inside || dragging(state, next, live)) && moved(state, next)
+  ) {
+    fireMove(out, state, next, live);
   }
   if (state && state.buttons !== next.buttons) {
-    applyButtonDelta(out, state, next, counts, opts);
+    applyButtonDelta(out, state, next, counts, live);
   }
 
-  return { events: out, state: next, clickCounts: counts };
+  // Capture ends with the last button, not with the pointer leaving.
+  const captured = next.buttons !== 0 && live.captured === true;
+  return { events: out, state: next, clickCounts: counts, captured };
 }
 
 export function snapshotEqual(a: PointerSnapshot, b: PointerSnapshot): boolean {

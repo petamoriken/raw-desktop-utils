@@ -409,3 +409,100 @@ Deno.test("queued composition events become CompositionEvent", () => {
   assertEquals((events[1] as CompositionEvent).cancelable, false);
   assertEquals((events[2] as CompositionEvent).data, "漢");
 });
+
+Deno.test("a drag keeps reporting after it leaves the view", () => {
+  // Press inside: that is what captures the pointer.
+  const idle = snap({ clientX: 10, clientY: 10, buttons: 0 });
+  const press = synthesize(
+    idle,
+    snap({ clientX: 10, clientY: 10, buttons: BUTTONS_PRIMARY }),
+  );
+  assertEquals(press.captured, true);
+
+  const outside = snap({
+    clientX: -20,
+    clientY: 900,
+    buttons: BUTTONS_PRIMARY,
+    inside: false,
+  });
+  const left = synthesize(press.state, outside, [], {
+    captured: press.captured,
+  });
+  assertEquals(typesOf(left.events), [
+    "pointerout",
+    "mouseout",
+    "pointerleave",
+    "mouseleave",
+    "pointermove",
+    "mousemove",
+  ]);
+  const move = left.events.find((e) =>
+    e.type === "pointermove"
+  ) as PointerEvent;
+  assertEquals([move.clientX, move.clientY], [-20, 900]);
+
+  // Still outside, still held: the browser keeps sending these.
+  const farther = snap({
+    clientX: -60,
+    clientY: 950,
+    buttons: BUTTONS_PRIMARY,
+    inside: false,
+  });
+  const second = synthesize(outside, farther, [], { captured: left.captured });
+  assertEquals(typesOf(second.events), ["pointermove", "mousemove"]);
+
+  // The release drops the capture.
+  const up = snap({ clientX: -60, clientY: 950, buttons: 0, inside: false });
+  const end = synthesize(farther, up, [], { captured: second.captured });
+  assertEquals(typesOf(end.events), ["pointerup", "mouseup"]);
+  assertEquals(end.captured, false);
+});
+
+Deno.test("a drag that began in another window stays silent", () => {
+  const a = snap({
+    clientX: -20,
+    clientY: 900,
+    buttons: BUTTONS_PRIMARY,
+    inside: false,
+  });
+  const b = snap({
+    clientX: -60,
+    clientY: 950,
+    buttons: BUTTONS_PRIMARY,
+    inside: false,
+  });
+  assertEquals(typesOf(synthesize(a, b, [], { captured: false }).events), []);
+});
+
+Deno.test("hovering outside the view reports nothing", () => {
+  const a = snap({ clientX: -20, clientY: 900, buttons: 0, inside: false });
+  const b = snap({ clientX: -60, clientY: 950, buttons: 0, inside: false });
+  assertEquals(typesOf(synthesize(a, b).events), []);
+});
+
+Deno.test("a queued release past the edge is not a re-entry or a click", () => {
+  const { events } = synthesize(
+    snap({ clientX: 10, clientY: 10, buttons: BUTTONS_PRIMARY }),
+    snap({ clientX: -40, clientY: 900, buttons: 0, inside: false }),
+    [
+      queued({
+        type: NATIVE_EVENT_POINTER_UP,
+        button: 0,
+        buttons: 0,
+        clientX: -40,
+        clientY: 900,
+      }),
+    ],
+    { captured: true },
+  );
+  assertEquals(typesOf(events), [
+    "pointerout",
+    "mouseout",
+    "pointerleave",
+    "mouseleave",
+    "pointermove",
+    "mousemove",
+    "pointerup",
+    "mouseup",
+  ]);
+});

@@ -137,6 +137,12 @@ take `--allow-run`.
   source can win, `detail` is threaded across polls in `SynthResult.clickCounts`
   — the release has to report the count of the press it ends, or `dblclick`
   never fires.
+- A press inside captures the pointer, like a browser: `pointermove` keeps
+  firing past the edge with out-of-range `clientX` / `clientY` until the button
+  comes up, and that release is not a `click`. `SynthResult.captured` carries it
+  across polls next to `clickCounts`, so a drag that began in another window
+  reports nothing. A queued event's `inside` is its own bounds, never a blanket
+  `true`, or a release past the edge reads as a re-entry.
 - Close a native audio sink you opened. `AudioContext` only closes a sink it
   created itself, and a leaked one takes the process down with an access
   violation: Deno unloads the library at teardown while the audio callback is

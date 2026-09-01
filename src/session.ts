@@ -36,6 +36,7 @@ export class InputSession extends EventTarget {
   readonly #mouseEvents: boolean;
   #prev: PointerSnapshot | null = null;
   #clickCounts: ClickCounts = {};
+  #captured = false;
   #last: PointerSnapshot = emptySnapshot();
   #metrics: WindowMetrics | null = null;
   #closed = false;
@@ -228,12 +229,19 @@ export class InputSession extends EventTarget {
     // Queue first: a later snapshot would replay a mid-poll press as up then down.
     const queued = this.#native.pollEvents(this.#handle);
     const next = this.#native.snapshot(this.#handle);
-    const { events, clickCounts } = synthesize(this.#prev, next, queued, {
-      mouseEvents: this.#mouseEvents,
-      view: this.window,
-      clickCounts: this.#clickCounts,
-    });
+    const { events, clickCounts, captured } = synthesize(
+      this.#prev,
+      next,
+      queued,
+      {
+        mouseEvents: this.#mouseEvents,
+        view: this.window,
+        clickCounts: this.#clickCounts,
+        captured: this.#captured,
+      },
+    );
     this.#clickCounts = clickCounts;
+    this.#captured = captured;
     this.#prev = next;
     this.#last = next;
     this.#remember(next);

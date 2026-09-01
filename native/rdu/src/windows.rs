@@ -618,7 +618,8 @@ fn notify_move(hwnd: HWND) {
 
     let inside = cursor_over_view(hwnd).is_some();
     // The move that leaves still has to wake, or `pointerout` waits a frame.
-    if INSIDE.swap(inside, Ordering::Relaxed) || inside {
+    // A drag keeps waking past the edge: the session reports it like a browser.
+    if INSIDE.swap(inside, Ordering::Relaxed) || inside || current_buttons() != 0 {
         crate::wakeup::notify();
     }
 }
