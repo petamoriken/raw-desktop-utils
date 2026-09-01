@@ -151,53 +151,52 @@ src.start();
 
 ## Differences from the standard
 
-Coordinates use a **top-left** origin in logical pixels of the content view, the
-same space as `window.getSize()` and CSS
-[`clientX`](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientX) /
-[`clientY`](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientY).
+There is no document tree. Events do not hit-test, capture, or bubble through
+elements — they fire on the **session** (and on `options.target` if you pass
+one). [`clientX`](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientX)
+/ [`clientY`](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientY)
+still use a top-left origin in the content view, the same space as `getSize()`.
+
+A press that starts inside the view keeps sending `pointermove` after the cursor
+leaves, with out-of-range coordinates, until the button comes up. That release
+is not a `click`. A drag that started in another window stays silent.
 
 [`getModifierState`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/getModifierState)
 answers `Alt`, `AltGraph`, `Control`, `Meta`, `Shift`, `CapsLock`, and `Accel`
-(`Meta` on macOS, `Control` elsewhere). `capsLock` on `MouseEventInit` /
-`KeyboardEventInit` is an extension used to seed that bit.
+(`Meta` on macOS, `Control` elsewhere). Other modifier names are `false`.
+`capsLock` on `MouseEventInit` / `KeyboardEventInit` is an extension that seeds
+that bit.
 
-Composition events follow what the host window allows. On raw `laufey_winit`,
-IME is on by default; `BrowserWindow.setImeAllowed` / `setImeCursorArea` are the
-live setters (no-op on WebView / CEF). See
+Composition events fire only when the host window is composing. On raw
+`laufey_winit`, IME is on by default; `BrowserWindow.setImeAllowed` /
+`setImeCursorArea` turn it on or off (no-op on WebView / CEF). See
 [Known issues in deno desktop](#known-issues-in-deno-desktop).
 
 ### macOS
 
-- `devicePixelRatio` is the window `backingScaleFactor` (Retina is `2`).
-- The helper stays in screen space and flips Y. It does not call `convertPoint`
-  / `isFlipped` on winit views, which invert hit tests.
-- Composition is read from marked text (`hasMarkedText` / `NSTextInputContext`).
-- Title search works. Prefer `title` or `native` over `getNativeWindow()`.
+- `devicePixelRatio` is `2` on a Retina display, `1` otherwise.
+- The window can be found by `title`. Prefer that or `native` over
+  `getNativeWindow()`.
 
 ### Windows
 
-- Client pixels are reported **unscaled**. `GetClientRect` and `getSize()`
-  already agree, so `devicePixelRatio` is `1`. Do not divide by
-  `GetDpiForWindow`.
-- `KeyboardEvent.code` is derived from a virtual key, not a scan code: `OEM_*`
-  entries assume a US-style layout, and a numpad key with NumLock off arrives as
-  its navigation key (`Home`, not `Numpad7`). `key` still comes from the active
-  layout.
-- No pressure or tilt (`WM_POINTER` is not enabled).
-- Title search works.
+- `devicePixelRatio` is `1`. `clientX` and `getSize()` already use the pixels
+  the window occupies, even when the OS scale is 150%. Do not multiply by the
+  display scale.
+- `KeyboardEvent.code` assumes a US layout for punctuation keys. A numpad key
+  with NumLock off arrives as its navigation key (`Home`, not `Numpad7`). `key`
+  follows the active layout.
+- No pen pressure or tilt.
+- The window can be found by `title`.
 
 ### Linux
 
-- X11: coordinates are already top-left; `devicePixelRatio` is `1`. Title search
-  works. Caps Lock comes from `LockMask`.
-- Wayland: cannot list other clients — pass `options.native` /
-  `getNativeWindow().windowHandle` and `displayHandle`. No global position
-  (`screenX` / `outer*` stay `0`; inner size falls back to `getSize()`). The
-  compositor sends no key repeats, so `KeyboardEvent.repeat` is always false.
-- Neither backend reports composition: preedit never leaves the client that owns
-  the focused surface.
-- `KeyboardEvent.code` is empty until a key map exists; `key` is the UTF-8
-  character from the native event.
+- X11: `devicePixelRatio` is `1`. The window can be found by `title`.
+- Wayland: pass `options.native` and `display`. There is no title lookup.
+  `screenX` and `outer*` stay `0`; inner size falls back to `getSize()`.
+  `KeyboardEvent.repeat` is always `false`.
+- No composition events.
+- `KeyboardEvent.code` is empty. `key` is the character that was typed.
 
 ## Known issues in deno desktop
 

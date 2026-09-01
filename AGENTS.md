@@ -5,8 +5,9 @@ requestAnimationFrame) plus a standalone Web Audio subset. Intended for JSR.
 Comments, commit messages, and this file are English.
 
 `README.md` is the public doc: MDN links for the Web-shaped API (URLs without
-`/en-US`, so MDN redirects by locale), then OS-specific differences from the
-standard, then known `deno desktop` host bugs. Those host bugs start at
+`/en-US`, so MDN redirects by locale), then what a page author would notice
+versus a browser (not native internals), then known `deno desktop` host bugs.
+Those host bugs start at
 [denoland/deno#36752](https://github.com/denoland/deno/issues/36752) (raw IME
 off) and [denoland/deno#36738](https://github.com/denoland/deno/issues/36738)
 (`getNativeWindow()` panics off-main on macOS); Related on those tickets reaches
