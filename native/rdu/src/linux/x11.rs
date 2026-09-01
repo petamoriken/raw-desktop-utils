@@ -14,8 +14,8 @@ use x11rb::rust_connection::RustConnection;
 
 use crate::abi::{
     Chrome, QueuedEvent, Snapshot, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN, EV_POINTER_UP,
-    EV_WHEEL, FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CTRL, MOD_META,
-    MOD_SHIFT, PTR_MOUSE, QUEUE_CAP,
+    EV_WHEEL, FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CAPS, MOD_CTRL,
+    MOD_META, MOD_SHIFT, PTR_MOUSE, QUEUE_CAP,
 };
 
 struct State {
@@ -72,6 +72,10 @@ fn modifiers(mask: KeyButMask) -> u32 {
     }
     if mask.contains(KeyButMask::MOD4) {
         m |= MOD_META;
+    }
+    // X11 folds Caps Lock into the same state mask every event carries.
+    if mask.contains(KeyButMask::LOCK) {
+        m |= MOD_CAPS;
     }
     m
 }

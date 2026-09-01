@@ -31,8 +31,8 @@ use wayland_sys::ffi_dispatch;
 
 use crate::abi::{
     QueuedEvent, Snapshot, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN, EV_POINTER_UP, EV_WHEEL,
-    FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, MOD_ALT, MOD_CTRL, MOD_META, MOD_SHIFT, PTR_MOUSE,
-    QUEUE_CAP,
+    FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, MOD_ALT, MOD_CAPS, MOD_CTRL, MOD_META, MOD_SHIFT,
+    PTR_MOUSE, QUEUE_CAP,
 };
 
 const BTN_LEFT: u32 = 0x110;
@@ -81,7 +81,9 @@ fn button_from_linux(code: u32) -> Option<(u32, u32)> {
     }
 }
 
-fn mods_from_xkb(depressed: u32) -> u32 {
+/// xkb modifier indices: Shift 0, Lock 1, Control 2, Mod1 3, Mod4 6. Caps Lock is
+/// a locked modifier, not a depressed one.
+fn mods_from_xkb(depressed: u32, locked: u32) -> u32 {
     let mut m = 0;
     if depressed & (1 << 0) != 0 {
         m |= MOD_SHIFT;
@@ -94,6 +96,9 @@ fn mods_from_xkb(depressed: u32) -> u32 {
     }
     if depressed & (1 << 6) != 0 {
         m |= MOD_META;
+    }
+    if locked & (1 << 1) != 0 {
+        m |= MOD_CAPS;
     }
     m
 }
@@ -266,9 +271,11 @@ impl Dispatch<WlKeyboard, ()> for Input {
                 push(state, ev);
             }
             wl_keyboard::Event::Modifiers {
-                mods_depressed, ..
+                mods_depressed,
+                mods_locked,
+                ..
             } => {
-                state.modifiers = mods_from_xkb(mods_depressed);
+                state.modifiers = mods_from_xkb(mods_depressed, mods_locked);
             }
             _ => {}
         }

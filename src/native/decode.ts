@@ -4,6 +4,7 @@ import {
   emptySnapshot,
   MOD_COMPOSING,
   MOD_REPEAT,
+  NATIVE_EVENT_COMPOSITION_START,
   type NativeEventKind,
   type NativeQueuedEvent,
   type PointerSnapshot,
@@ -71,8 +72,13 @@ export function decodeQueuedEvent(
   const keyCode = v.getUint32(20, true);
   const code = keys.codeFromKeyCode(keyCode);
   const modifiers = v.getUint32(12, true);
+  const type = v.getUint32(0, true) as NativeEventKind;
+  // A composition event carries its `data` in the same field, and that is
+  // already the text: naming it as a key would turn an empty composition into
+  // `"Unidentified"`.
+  const composition = type >= NATIVE_EVENT_COMPOSITION_START;
   return {
-    type: v.getUint32(0, true) as NativeEventKind,
+    type,
     button: v.getUint32(4, true),
     buttons: v.getUint32(8, true),
     modifiers,
@@ -91,7 +97,7 @@ export function decodeQueuedEvent(
     tiltY: v.getFloat32(60, true),
     twist: v.getFloat32(64, true),
     pointerType: pointerTypeFromNative(v.getUint32(68, true)),
-    key: keys.keyFromEvent(keyCode, chars),
+    key: composition ? chars : keys.keyFromEvent(keyCode, chars),
     code,
     location: locationFromCode(code),
     repeat: (modifiers & MOD_REPEAT) !== 0,

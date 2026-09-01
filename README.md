@@ -89,9 +89,10 @@ view, the same space as `window.getSize()`. That matches CSS `clientX` /
 `clientY`. `devicePixelRatio` is the physical backing size of that space (Retina
 `2`, Windows unscaled `1`). On macOS the helper stays in screen space and flips
 Y; it does not call `convertPoint` / `isFlipped` on winit views, which invert
-hit tests. On Windows client pixels are reported unscaled, because
-`deno desktop` sizes a `BrowserWindow` in device pixels (a 640x480 window stays
-640x480 physical at 150% scale).
+hit tests. On Windows client pixels are reported unscaled: whatever the host
+does with the requested size, `GetClientRect` and `getSize()` agree (the webview
+backend keeps a 640x480 window 640x480 physical at 150%, the raw backend makes
+it 960x720 and reports 960x720).
 
 ## Events
 
@@ -102,11 +103,21 @@ From a live snapshot plus the native queue:
 - compatibility `mouse*` , `click`, `dblclick`, `auxclick`, `contextmenu`
 - `wheel`
 - `keydown` / `keyup`
+- `compositionstart` / `compositionupdate` / `compositionend`
+
+Composition events come from the OS IME, so they follow what the host window
+allows. macOS reports them from marked text. Windows reads IMM32, which stays
+quiet until `deno desktop` builds its window with IME enabled — winit turns IME
+off by default and there is no option for it yet. Linux never reports them: both
+backends watch another client's window from their own connection, and preedit
+never leaves the client that owns the focused surface. `KeyboardEvent`
+everywhere carries `repeat`, `isComposing`, and `getModifierState("CapsLock")`
+(Wayland has no `repeat`: the compositor sends none).
 
 The public exports are `attach`, `InputSession`, `Screen`, the DOM constructors
-(`PointerEvent`, `MouseEvent`, `WheelEvent`, `KeyboardEvent`, `UIEvent`), and a
-Web Audio subset (`AudioContext`, `AudioBuffer`, nodes). Platform key tables and
-inspect internals stay private.
+(`PointerEvent`, `MouseEvent`, `WheelEvent`, `KeyboardEvent`,
+`CompositionEvent`, `UIEvent`), and a Web Audio subset (`AudioContext`,
+`AudioBuffer`, nodes). Platform key tables and inspect internals stay private.
 
 ## Audio
 

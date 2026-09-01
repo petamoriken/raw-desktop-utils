@@ -44,6 +44,9 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MBUTTON, VK_MENU, VK_RBUTTON, VK_RCONTROL,
     VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT, VK_XBUTTON1, VK_XBUTTON2,
 };
+use windows_sys::Win32::UI::Input::Ime::{
+    ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext, GCS_COMPSTR,
+};
 use windows_sys::Win32::UI::Input::{
     GetRawInputData, RegisterRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER,
     RAWKEYBOARD, RAWMOUSE, RIDEV_INPUTSINK, RIDEV_REMOVE, RID_INPUT, RIM_TYPEKEYBOARD,
@@ -65,9 +68,10 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::abi::{
-    Chrome, QueuedEvent, Snapshot, ABI_VERSION, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN,
-    EV_POINTER_UP, EV_WHEEL, FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CTRL,
-    MOD_META, MOD_SHIFT, PTR_MOUSE, PTR_PEN, QUEUE_CAP,
+    Chrome, QueuedEvent, Snapshot, ABI_VERSION, EV_COMPOSITION_END, EV_COMPOSITION_START,
+    EV_COMPOSITION_UPDATE, EV_KEY_DOWN, EV_KEY_UP, EV_POINTER_DOWN, EV_POINTER_UP, EV_WHEEL,
+    FLAG_FOCUSED, FLAG_INSIDE, FLAG_VALID, KEY_BYTES, MOD_ALT, MOD_CAPS, MOD_COMPOSING, MOD_CTRL,
+    MOD_META, MOD_REPEAT, MOD_SHIFT, PTR_MOUSE, PTR_PEN, QUEUE_CAP,
 };
 
 /// One wheel notch in CSS pixels. Same value the X11 backend reports.
@@ -156,6 +160,14 @@ struct State {
     /// Buttons whose press we claimed, so their release is ours to report even
     /// if the pointer has since left the view.
     held: u32,
+    /// Virtual keys currently down, one bit per VK, so a second keydown for a
+    /// key that never came up is `KeyboardEvent.repeat`.
+    keys_down: [u64; 4],
+    composing: bool,
+    /// Last IME composition string, so a change is an update and the text is
+    /// still available to report on `compositionend`.
+    marked: [u8; KEY_BYTES],
+    marked_len: u32,
 }
 
 static STATE: Mutex<State> = Mutex::new(State {
@@ -172,6 +184,10 @@ static STATE: Mutex<State> = Mutex::new(State {
     recent_n: 0,
     clicks: [Click::empty(); BUTTONS],
     held: 0,
+    keys_down: [0; 4],
+    composing: false,
+    marked: [0; KEY_BYTES],
+    marked_len: 0,
 });
 
 fn hwnd_from_ptr(ptr: *mut c_void) -> Option<HWND> {
@@ -218,6 +234,9 @@ fn current_modifiers() -> u32 {
     }
     if async_key_down(VK_LWIN as i32) || async_key_down(VK_RWIN as i32) {
         m |= MOD_META;
+    }
+    if key_toggled(VK_CAPITAL as i32) {
+        m |= MOD_CAPS;
     }
     m
 }
@@ -290,6 +309,9 @@ fn modifiers_from_mk(wparam: WPARAM) -> u32 {
     }
     if async_key_down(VK_LWIN as i32) || async_key_down(VK_RWIN as i32) {
         m |= MOD_META;
+    }
+    if key_toggled(VK_CAPITAL as i32) {
+        m |= MOD_CAPS;
     }
     m
 }
@@ -840,6 +862,118 @@ fn set_key_text(ev: &mut QueuedEvent, text: &str) {
     ev.key_len = n as u32;
 }
 
+/// The IME composition string of the attached window, or `None` when there is
+/// no composition. Read through IMM32: Microsoft IME is a TSF text service, but
+/// the TSF-to-IMM32 bridge keeps this working for a window that, like winit's,
+/// does not implement TSF itself.
+fn composition_text(hwnd: HWND) -> Option<String> {
+    let imc = unsafe { ImmGetContext(hwnd) };
+    if imc.is_null() {
+        return None;
+    }
+    // An idle context answers 0, exactly like a composition with no text yet,
+    // so a composition only becomes observable once it has a character in it.
+    let bytes = unsafe { ImmGetCompositionStringW(imc, GCS_COMPSTR, ptr::null_mut(), 0) };
+    let text = if bytes <= 0 {
+        None
+    } else {
+        let mut buf = vec![0u16; (bytes as usize) / 2 + 1];
+        let written = unsafe {
+            ImmGetCompositionStringW(
+                imc,
+                GCS_COMPSTR,
+                buf.as_mut_ptr().cast(),
+                (buf.len() * 2) as u32,
+            )
+        };
+        let units = if written > 0 {
+            (written as usize / 2).min(buf.len())
+        } else {
+            0
+        };
+        Some(String::from_utf16_lossy(&buf[..units]))
+    };
+    unsafe { ImmReleaseContext(hwnd, imc) };
+    text
+}
+
+/// Turn the IME composition state into `compositionstart` / `update` / `end`.
+/// The state is diffed rather than taken from `WM_IME_*`, for the same reason
+/// the rest of this backend leans on raw input: those messages go to whichever
+/// window the IME is attached to, and the diff also cannot double-report.
+fn emit_composition(hwnd: HWND) {
+    let now = composition_text(hwnd);
+    let mut state = STATE.lock().expect("rdu state");
+    let was = state.composing;
+    let prev = stored_marked(&state);
+    let is = now.is_some();
+    let text = now.unwrap_or_default();
+    state.composing = is;
+    store_marked(&mut state, &text);
+
+    if !was && is {
+        push_composition(&mut state, hwnd, EV_COMPOSITION_START, &text);
+        if !text.is_empty() {
+            push_composition(&mut state, hwnd, EV_COMPOSITION_UPDATE, &text);
+        }
+    } else if was && is && text != prev {
+        push_composition(&mut state, hwnd, EV_COMPOSITION_UPDATE, &text);
+    } else if was && !is {
+        // `data` is the text the session was composing; IMM32 hands the commit
+        // to the host window, not to an observer.
+        push_composition(&mut state, hwnd, EV_COMPOSITION_END, &prev);
+    }
+}
+
+fn push_composition(state: &mut State, hwnd: HWND, type_: u32, data: &str) {
+    let mut ev = QueuedEvent::empty();
+    ev.type_ = type_;
+    ev.pointer_type = PTR_MOUSE;
+    ev.buttons = current_buttons();
+    ev.modifiers = current_modifiers();
+    ev.pressure = -1.0;
+    set_key_text(&mut ev, data);
+    let mut cursor = POINT { x: 0, y: 0 };
+    if unsafe { GetCursorPos(&mut cursor) } != 0 {
+        let mapped = map_screen(hwnd, cursor);
+        ev.client_x = mapped.client_x;
+        ev.client_y = mapped.client_y;
+        ev.screen_x = mapped.screen_x;
+        ev.screen_y = mapped.screen_y;
+    }
+    push(state, ev);
+}
+
+fn store_marked(state: &mut State, text: &str) {
+    let bytes = text.as_bytes();
+    let mut n = bytes.len().min(KEY_BYTES);
+    while n > 0 && !text.is_char_boundary(n) {
+        n -= 1;
+    }
+    state.marked[..n].copy_from_slice(&bytes[..n]);
+    state.marked_len = n as u32;
+}
+
+fn stored_marked(state: &State) -> String {
+    String::from_utf8_lossy(&state.marked[..state.marked_len as usize]).into_owned()
+}
+
+/// Was this key already down? Raw input carries no repeat flag, so the answer
+/// has to come from the keys we have seen go down and not come back up.
+fn track_key(state: &mut State, vk: u32, down: bool) -> bool {
+    let Some(word) = state.keys_down.get_mut((vk as usize) / 64) else {
+        return false;
+    };
+    let bit = 1u64 << (vk % 64);
+    let was = *word & bit != 0;
+    if down {
+        *word |= bit;
+    } else {
+        *word &= !bit;
+    }
+    down && was
+}
+
 /// Queue a key event. `lparam` only has to carry the scan code and the
 /// extended bit, so raw input can synthesize one.
 fn push_key(hwnd: HWND, vk: u32, lparam: LPARAM, down: bool) {
@@ -849,6 +983,11 @@ fn push_key(hwnd: HWND, vk: u32, lparam: LPARAM, down: bool) {
     ev.key_code = resolve_side(vk, lparam);
     ev.buttons = current_buttons();
     ev.modifiers = current_modifiers();
+    // Read the IME now rather than trusting the last poll: during composition
+    // the IME swallows the key, but raw input sits below it and still reports.
+    if composition_text(hwnd).is_some() {
+        ev.modifiers |= MOD_COMPOSING;
+    }
     if let Some(text) = characters(vk, lparam) {
         set_key_text(&mut ev, &text);
     }
@@ -861,7 +1000,11 @@ fn push_key(hwnd: HWND, vk: u32, lparam: LPARAM, down: bool) {
         ev.screen_x = mapped.screen_x;
         ev.screen_y = mapped.screen_y;
     }
-    push(&mut STATE.lock().expect("rdu state"), ev);
+    let mut state = STATE.lock().expect("rdu state");
+    if track_key(&mut state, ev.key_code, down) {
+        ev.modifiers |= MOD_REPEAT;
+    }
+    push(&mut state, ev);
 }
 
 /// Translate one posted message into a queued event, if it is input.
@@ -1067,6 +1210,9 @@ pub extern "C" fn rdu_attach(view_ptr: *mut c_void) -> i32 {
     state.recent_n = 0;
     state.clicks = [Click::empty(); BUTTONS];
     state.held = 0;
+    state.keys_down = [0; 4];
+    state.composing = false;
+    state.marked_len = 0;
     // Point raw input at this window even on a re-attach: the target moves with
     // the handle, and re-registering the same usage pages is not an error.
     state.raw_input = register_raw_input(hwnd);
@@ -1096,6 +1242,9 @@ pub extern "C" fn rdu_detach(view_ptr: *mut c_void) {
     state.queue.count = 0;
     state.recent_n = 0;
     state.held = 0;
+    state.keys_down = [0; 4];
+    state.composing = false;
+    state.marked_len = 0;
     if state.raw_input {
         unregister_raw_input();
         state.raw_input = false;
@@ -1171,6 +1320,11 @@ pub unsafe extern "C" fn rdu_poll_events(
 ) -> i32 {
     if buf.is_null() || cap <= 0 {
         return 0;
+    }
+    // Sample the IME before draining so a composition change made since the
+    // last poll is reported in this one.
+    if let Some(hwnd) = attached_hwnd() {
+        emit_composition(hwnd);
     }
     let mut state = STATE.lock().expect("rdu state");
     let n = state.queue.count.min(cap as usize);

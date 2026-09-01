@@ -93,6 +93,21 @@ take `--allow-run`.
   ahead of those (under WebView2 they never arrive), so a Shift keydown would
   report `shiftKey: false`. `GetAsyncKeyState` is the honest source; the Caps
   Lock toggle bit is the one exception, since it has no async form.
+- Windows composition is read from IMM32 (`ImmGetCompositionStringW`,
+  `GCS_COMPSTR`) and diffed in `rdu_poll_events`, not taken from `WM_IME_*`. An
+  idle context answers 0 bytes exactly like a composition with no text, so
+  "composing" means the string is non-empty. Do not associate an IME context on
+  the host's behalf: `deno desktop` builds its window through winit with IME
+  off, and `ImmAssociateContextEx` from here gives the window a context that the
+  host's window procedure still refuses to compose into. Composition needs
+  `set_ime_allowed(true)` upstream; until then these events simply never fire.
+- Linux cannot report composition at all. Both backends observe another client's
+  window from their own connection, and preedit lives between that client and
+  the IM server: X11 XIM is a private conversation with the IM window, and
+  `zwp_text_input_v3` only ever reaches the client that owns the focused
+  surface. `MOD_CAPS` works on both (X11 `KeyButMask::LOCK`, Wayland
+  `mods_locked` bit 1); Wayland has no `MOD_REPEAT` because the compositor sends
+  no repeats — clients synthesize them from `repeat_info`.
 - `poll()` drains the native queue _before_ taking the snapshot, and a queued
   press or release for a button whose edge the snapshot already reported is
   dropped. Otherwise the two sources replay each other's edges. Because either

@@ -3,7 +3,14 @@ import { macKeys } from "../src/keys/macos.ts";
 import { QUEUED_EVENT_BYTES, SNAPSHOT_BYTES } from "../src/native/abi.ts";
 import { decodeQueuedEvent, decodeSnapshot } from "../src/native/decode.ts";
 import type { KeyTranslator } from "../src/keys/types.ts";
-import { MOD_CAPS, MOD_COMPOSING, MOD_REPEAT } from "../src/types.ts";
+import { windowsKeys } from "../src/keys/windows.ts";
+import {
+  MOD_CAPS,
+  MOD_COMPOSING,
+  MOD_REPEAT,
+  NATIVE_EVENT_COMPOSITION_START,
+  NATIVE_EVENT_COMPOSITION_UPDATE,
+} from "../src/types.ts";
 
 Deno.test("snapshot decoder reads little-endian packed fields", () => {
   const buf = new ArrayBuffer(SNAPSHOT_BYTES);
@@ -89,4 +96,20 @@ Deno.test("queued key decoder reads repeat, composing, and CapsLock bits", () =>
   assertEquals(ev.repeat, true);
   assertEquals(ev.isComposing, true);
   assertEquals((ev.modifiers & MOD_CAPS) !== 0, true);
+});
+
+Deno.test("composition data is the raw text, not a key name", () => {
+  const buf = new Uint8Array(QUEUED_EVENT_BYTES);
+  const v = new DataView(buf.buffer);
+  v.setUint32(0, NATIVE_EVENT_COMPOSITION_START, true);
+  // An empty composition must not be named `Unidentified` by the key fallback.
+  const start = decodeQueuedEvent(buf, 0, windowsKeys);
+  assertEquals(start.key, "");
+
+  const text = new TextEncoder().encode("あ");
+  v.setUint32(0, NATIVE_EVENT_COMPOSITION_UPDATE, true);
+  v.setUint32(72, text.length, true);
+  buf.set(text, 76);
+  const update = decodeQueuedEvent(buf, 0, windowsKeys);
+  assertEquals(update.key, "あ");
 });
