@@ -81,6 +81,7 @@ struct State {
     recent: [Recent; RECENT_CAP],
     recent_n: usize,
     last_buttons: Option<u32>,
+    last_client: Option<(f32, f32)>,
     last_keys: u128,
     composing: bool,
     marked: [u8; KEY_BYTES],
@@ -101,6 +102,7 @@ static STATE: Mutex<State> = Mutex::new(State {
     recent: [Recent::empty(); RECENT_CAP],
     recent_n: 0,
     last_buttons: None,
+    last_client: None,
     last_keys: 0,
     composing: false,
     marked: [0; KEY_BYTES],
@@ -629,6 +631,8 @@ fn push(ev: QueuedEvent) {
     let tail = (q.head + q.count) % QUEUE_CAP;
     q.events[tail] = ev;
     q.count += 1;
+    drop(state);
+    crate::wakeup::notify();
 }
 
 fn fill_pointer_fields(event: &NSEvent, ev: &mut QueuedEvent) {
@@ -891,6 +895,20 @@ fn sample_buttons() {
     }
     sample_keys(&view, mtm);
     emit_composition(&view, mtm);
+    let screen = NSEvent::mouseLocation();
+    if let Some(mapped) = map_screen(&view, screen, false, mtm) {
+        let moved = {
+            let mut state = match STATE.lock() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            let prev = state.last_client.replace((mapped.client_x, mapped.client_y));
+            prev.is_some_and(|(x, y)| x != mapped.client_x || y != mapped.client_y)
+        };
+        if moved {
+            crate::wakeup::notify();
+        }
+    }
 }
 
 fn start_sampler() {
@@ -998,6 +1016,7 @@ pub extern "C" fn rdu_attach(view_ptr: *mut c_void) -> i32 {
         state.recent = [Recent::empty(); RECENT_CAP];
         state.recent_n = 0;
         state.last_buttons = None;
+        state.last_client = None;
         state.last_keys = 0;
         state.composing = false;
         state.marked = [0; KEY_BYTES];

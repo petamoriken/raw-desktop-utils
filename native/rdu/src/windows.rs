@@ -441,6 +441,7 @@ fn push(state: &mut State, ev: QueuedEvent) {
     let tail = (q.head + q.count) % QUEUE_CAP;
     q.events[tail] = ev;
     q.count += 1;
+    crate::wakeup::notify();
 }
 
 fn message_is_ours(hwnd: HWND, msg_hwnd: HWND) -> bool {

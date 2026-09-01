@@ -39,7 +39,12 @@ export class InputSession extends EventTarget {
   #last: PointerSnapshot = emptySnapshot();
   #metrics: WindowMetrics | null = null;
   #closed = false;
-  #timer: ReturnType<typeof setInterval> | null = null;
+  #polling = false;
+  #wakeAgain = false;
+  #wakeQueued = false;
+  #clock: ReturnType<typeof setInterval> | null = null;
+  #listening = false;
+  #hasNotify = false;
   #frames = new AnimationFrames();
 
   constructor(
@@ -54,9 +59,7 @@ export class InputSession extends EventTarget {
     this.#handle = handle;
     this.#target = options.target ?? null;
     this.#mouseEvents = options.mouseEvents !== false;
-    if (options.autoPoll && options.autoPoll > 0) {
-      this.#timer = setInterval(() => this.poll(), options.autoPoll);
-    }
+    this.#hasNotify = native.setNotify?.(() => this.#onNativeWake()) === true;
   }
 
   get closed(): boolean {
@@ -122,29 +125,27 @@ export class InputSession extends EventTarget {
 
   poll(): PointerSnapshot {
     this.#assertOpen();
-    // Queue first: a later snapshot would replay a mid-poll press as up then down.
-    const queued = this.#native.pollEvents(this.#handle);
-    const next = this.#native.snapshot(this.#handle);
-    const { events, clickCounts } = synthesize(this.#prev, next, queued, {
-      mouseEvents: this.#mouseEvents,
-      view: this.window,
-      clickCounts: this.#clickCounts,
-    });
-    this.#clickCounts = clickCounts;
-    this.#prev = next;
-    this.#last = next;
-    this.#remember(next);
-    this.#emit(events);
-    return next;
+    if (this.#polling) {
+      this.#wakeAgain = true;
+      return this.#last;
+    }
+    this.#polling = true;
+    try {
+      do {
+        this.#wakeAgain = false;
+        this.#pollOnce();
+      } while (this.#wakeAgain);
+    } finally {
+      this.#polling = false;
+    }
+    return this.#last;
   }
 
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
-    if (this.#timer !== null) {
-      clearInterval(this.#timer);
-      this.#timer = null;
-    }
+    this.#stopClock();
+    this.#native.setNotify?.(null);
     this.#frames.close();
     this.#native.detach(this.#handle);
   }
@@ -155,7 +156,10 @@ export class InputSession extends EventTarget {
 
   requestAnimationFrame(callback: FrameRequestCallback): number {
     this.#assertOpen();
-    return this.#frames.request(callback);
+    return this.#frames.request((time) => {
+      if (!this.#closed) this.poll();
+      callback(time);
+    });
   }
 
   cancelAnimationFrame(handle: number): void {
@@ -178,6 +182,7 @@ export class InputSession extends EventTarget {
     options?: boolean | AddEventListenerOptions,
   ): void {
     super.addEventListener(type, listener, options);
+    if (listener) this.#onListenerChange(true);
   }
 
   override removeEventListener<K extends keyof InputSessionEventMap>(
@@ -196,6 +201,7 @@ export class InputSession extends EventTarget {
     options?: boolean | EventListenerOptions,
   ): void {
     super.removeEventListener(type, listener, options);
+    if (listener) this.#onListenerChange(false);
   }
 
   #currentMetrics(): WindowMetrics {
@@ -216,6 +222,53 @@ export class InputSession extends EventTarget {
     if (this.#closed) {
       throw new Error("raw-desktop-utils: InputSession is closed");
     }
+  }
+
+  #pollOnce(): void {
+    // Queue first: a later snapshot would replay a mid-poll press as up then down.
+    const queued = this.#native.pollEvents(this.#handle);
+    const next = this.#native.snapshot(this.#handle);
+    const { events, clickCounts } = synthesize(this.#prev, next, queued, {
+      mouseEvents: this.#mouseEvents,
+      view: this.window,
+      clickCounts: this.#clickCounts,
+    });
+    this.#clickCounts = clickCounts;
+    this.#prev = next;
+    this.#last = next;
+    this.#remember(next);
+    this.#emit(events);
+  }
+
+  #onNativeWake(): void {
+    if (this.#closed || this.#wakeQueued) return;
+    this.#wakeQueued = true;
+    queueMicrotask(() => {
+      this.#wakeQueued = false;
+      if (!this.#closed) this.poll();
+    });
+  }
+
+  #onListenerChange(added: boolean): void {
+    if (added) this.#listening = true;
+    if (this.#closed) return;
+    // Host rAF may not tick without a present; keep a frame clock when the
+    // native helper cannot wake us (Windows, tests without setNotify).
+    if (this.#listening && !this.#hasNotify) this.#startClock();
+    else this.#stopClock();
+  }
+
+  #startClock(): void {
+    if (this.#clock !== null) return;
+    this.#clock = setInterval(() => {
+      if (!this.#closed) this.poll();
+    }, 16);
+  }
+
+  #stopClock(): void {
+    if (this.#clock === null) return;
+    clearInterval(this.#clock);
+    this.#clock = null;
   }
 
   #emit(events: readonly SynthesizedEvent[]): void {
@@ -241,7 +294,6 @@ export class InputSession extends EventTarget {
         devicePixelRatio: this.#metrics?.devicePixelRatio ?? 1,
         innerWidth: this.#metrics?.innerWidth ?? 0,
         innerHeight: this.#metrics?.innerHeight ?? 0,
-        autoPoll: this.#timer !== null,
       }),
       inspect,
       options,

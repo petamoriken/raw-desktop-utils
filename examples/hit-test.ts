@@ -63,7 +63,6 @@ function quit() {
   if (quitting) return;
   quitting = true;
   record("quit", {});
-  clearInterval(pollTimer);
   input.close();
   try {
     win.close();
@@ -73,29 +72,27 @@ function quit() {
   Deno.exit(0);
 }
 
-// Raw winit rAF does not tick unless something presents.
-const pollTimer = setInterval(() => {
+input.addEventListener("pointermove", (event) => {
   if (windowIsClosed()) {
     quit();
     return;
   }
-  const snap = input.poll();
-  const next = inContent(snap.clientX, snap.clientY)
-    ? hit(snap.clientX, snap.clientY)?.id ?? null
+  const next = inContent(event.clientX, event.clientY)
+    ? hit(event.clientX, event.clientY)?.id ?? null
     : null;
-  const pressed = (snap.buttons & 1) !== 0 ? (next ?? down) : null;
+  const pressed = event.buttons & 1 ? (next ?? down) : null;
   if (next !== hover) {
     hover = next;
     record("hover", {
       id: hover,
-      x: snap.clientX,
-      y: snap.clientY,
-      inside: snap.inside,
-      buttons: snap.buttons,
+      x: event.clientX,
+      y: event.clientY,
+      inside: inContent(event.clientX, event.clientY),
+      buttons: event.buttons,
     });
   }
   if (pressed !== down) down = pressed;
-}, 16);
+});
 
 input.addEventListener("pointerdown", (event) => {
   if (!inContent(event.clientX, event.clientY)) return;

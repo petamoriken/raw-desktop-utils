@@ -9,6 +9,7 @@ export type NativeBackend = {
   detach(handle: Deno.PointerValue): void;
   snapshot(handle: Deno.PointerValue): PointerSnapshot;
   pollEvents(handle: Deno.PointerValue, cap?: number): NativeQueuedEvent[];
+  setNotify?(handler: (() => void) | null): boolean;
 };
 
 export class NativeUnsupportedError extends Error {

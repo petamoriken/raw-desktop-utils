@@ -2,8 +2,12 @@
 
 use std::collections::VecDeque;
 use std::ffi::{c_char, c_void, CStr};
+use std::os::fd::AsRawFd;
 use std::ptr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{
@@ -235,6 +239,39 @@ fn push(state: &mut State, ev: QueuedEvent) {
         state.queue.pop_front();
     }
     state.queue.push_back(ev);
+    crate::wakeup::notify();
+}
+
+fn start_waiter() {
+    static STARTED: AtomicBool = AtomicBool::new(false);
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let _ = thread::Builder::new().name("rdu-x11".into()).spawn(|| loop {
+        let fd = {
+            let Ok(state) = STATE.lock() else {
+                return;
+            };
+            if state.attached.is_none() {
+                None
+            } else {
+                state.conn.as_ref().map(|conn| conn.stream().as_raw_fd())
+            }
+        };
+        let Some(fd) = fd else {
+            thread::sleep(Duration::from_millis(50));
+            continue;
+        };
+        let mut pfd = libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let n = unsafe { libc::poll(&mut pfd, 1, 100) };
+        if n > 0 {
+            crate::wakeup::notify();
+        }
+    });
 }
 
 fn drain_events(state: &mut State) {
@@ -393,6 +430,7 @@ pub(crate) fn attach(view_ptr: *mut c_void) -> i32 {
     }
     state.attached = Some(win);
     state.queue.clear();
+    start_waiter();
     1
 }
 

@@ -142,7 +142,6 @@ export type AttachOptions = {
   display?: Deno.PointerValue;
   target?: EventTarget;
   mouseEvents?: boolean;
-  autoPoll?: number;
   locateTimeoutMs?: number;
 };
 

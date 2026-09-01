@@ -1,10 +1,11 @@
 # raw-desktop-utils
 
 Utilities for [`deno desktop`](https://docs.deno.com/runtime/desktop/) raw
-`BrowserWindow`s. `attach(window)` returns an `InputSession`. Each `poll()`
-reads the OS pointer and the queued click / wheel / key events, then dispatches
-the same event types a browser would. Listen on the **session**, not on
-`BrowserWindow`.
+`BrowserWindow`s. `attach(window)` returns an `InputSession`. Native click /
+wheel / key events wake the session; `requestAnimationFrame` also samples the
+pointer before the callback. Listen on the **session**, not on `BrowserWindow`.
+`poll()` is still there for tests and for Windows (wakeup is macOS / Linux only
+for now).
 
 Also a standalone
 [Web Audio](https://developer.mozilla.org/docs/Web/API/Web_Audio_API) subset
@@ -44,7 +45,6 @@ input.addEventListener("pointerdown", (event) => {
 });
 
 function frame(_time: number) {
-  input.poll();
   game.draw();
   input.requestAnimationFrame(frame);
 }
@@ -60,7 +60,6 @@ input.requestAnimationFrame(frame);
 | `display`         | Wayland `wl_display*` (`getNativeWindow().displayHandle`).                      |
 | `target`          | Extra `EventTarget` that also receives copies of each event.                    |
 | `mouseEvents`     | Also fire `mousedown` / `click` / `contextmenu` (default `true`).               |
-| `autoPoll`        | Interval in ms; omit to poll yourself.                                          |
 | `locateTimeoutMs` | How long to wait for the window to appear (default 500).                        |
 
 `attach` finds the view from `options.native` or `title` first. It only calls
@@ -163,7 +162,9 @@ answers `Alt`, `AltGraph`, `Control`, `Meta`, `Shift`, `CapsLock`, and `Accel`
 (`Meta` on macOS, `Control` elsewhere). `capsLock` on `MouseEventInit` /
 `KeyboardEventInit` is an extension used to seed that bit.
 
-Composition events follow what the host window allows. See
+Composition events follow what the host window allows. On raw `laufey_winit`,
+IME is on by default; `BrowserWindow.setImeAllowed` / `setImeCursorArea` are the
+live setters (no-op on WebView / CEF). See
 [Known issues in deno desktop](#known-issues-in-deno-desktop).
 
 ### macOS
@@ -225,7 +226,9 @@ others are linked from their Related sections.
 
 `BrowserWindow` can still emit incomplete mouse events and double-fire; listen
 on the session. Raw winit `requestAnimationFrame` does not tick unless something
-presents — drive `poll()` yourself if you are not presenting.
+presents. On macOS and Linux the native helper wakes the session for queued
+events, so listeners still run. On Windows, call `poll()` or present so host rAF
+ticks.
 
 ## Native helper
 

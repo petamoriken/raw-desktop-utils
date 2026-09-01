@@ -46,14 +46,18 @@ take `--allow-run`.
   `AudioContextOptions.renderSizeHint` / `renderQuantumSize` (default 128).
   After changing `native/rdu/src/audio.rs`, rebuild the prebuilt. ABI is 3.
 - `InputSession.poll()` diffs a native snapshot plus a queued event list into
-  Pointer / Mouse / Wheel / Keyboard / Composition events. Listeners go on the
-  **session**, not `BrowserWindow` (that source can double-fire). On macOS the
-  queue is a local NSEvent monitor plus a 4 ms Combined Session button and key
-  sampler. Do not add a CGEvent tap or global monitor (those need Input
-  Monitoring / Accessibility). Quartz posts update `mouseLocation` (hover works)
-  but often skip the local monitor and `NSEvent.pressedMouseButtons`. Off-main
-  AppKit work hops to the main queue when it pumps, and runs inline under
-  `deno test` so `exec_sync` cannot deadlock.
+  Pointer / Mouse / Wheel / Keyboard / Composition events. The session also
+  polls on native wakeup (`rdu_set_notify`, macOS / Linux) and immediately
+  before `requestAnimationFrame` callbacks. Listeners go on the **session**, not
+  `BrowserWindow` (that source can double-fire). Keep `poll()` for tests and
+  Windows (no wakeup yet). On macOS the queue is a local NSEvent monitor plus a
+  4 ms Combined Session button and key sampler. Do not add a CGEvent tap or
+  global monitor (those need Input Monitoring / Accessibility). Quartz posts
+  update `mouseLocation` (hover works) but often skip the local monitor and
+  `NSEvent.pressedMouseButtons`. Off-main AppKit work hops to the main queue
+  when it pumps, and runs inline under `deno test` so `exec_sync` cannot
+  deadlock. Never invoke JS from the monitor, hook, or sampler: `wakeup.rs`
+  calls the isolate from its own thread.
 - Coordinates are content-view logical pixels, **top-left** origin (`clientX` /
   `clientY`), in the same space as `window.getSize()`.
 - Native helper is the Rust cdylib `native/rdu`. macOS is AppKit (`macos.rs`);

@@ -6,6 +6,11 @@ export const RDU_SYMBOLS = {
   rdu_detach: { parameters: ["pointer"], result: "void" },
   rdu_snapshot: { parameters: ["pointer", "buffer"], result: "i32" },
   rdu_poll_events: { parameters: ["pointer", "buffer", "i32"], result: "i32" },
+  rdu_set_notify: {
+    parameters: ["pointer"],
+    result: "i32",
+    optional: true,
+  },
   rdu_audio_open: {
     parameters: ["u32", "u32", "u32"],
     result: "pointer",

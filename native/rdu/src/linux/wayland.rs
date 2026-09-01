@@ -6,8 +6,10 @@ use std::collections::VecDeque;
 use std::ffi::c_void;
 use std::os::raw::c_char;
 use std::ptr;
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::thread;
+use std::time::Duration;
 
 use wayland_backend::sys::client::Backend;
 use wayland_client::protocol::wl_keyboard::{self, WlKeyboard};
@@ -118,6 +120,28 @@ fn push(input: &mut Input, ev: QueuedEvent) {
         input.events.pop_front();
     }
     input.events.push_back(ev);
+    crate::wakeup::notify();
+}
+
+fn start_pump() {
+    static STARTED: AtomicBool = AtomicBool::new(false);
+    if STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let _ = thread::Builder::new()
+        .name("rdu-wayland".into())
+        .spawn(|| loop {
+            thread::sleep(Duration::from_millis(8));
+            dispatch_state();
+            let pending = STATE
+                .lock()
+                .ok()
+                .and_then(|guard| guard.as_ref().map(|wl| !wl.input.events.is_empty()))
+                .unwrap_or(false);
+            if pending {
+                crate::wakeup::notify();
+            }
+        });
 }
 
 impl Dispatch<WlRegistry, ()> for Input {
@@ -184,9 +208,11 @@ impl Dispatch<WlPointer, ()> for Input {
                 state.pointer_id = surface_protocol_id(&surface);
                 state.x = surface_x;
                 state.y = surface_y;
+                crate::wakeup::notify();
             }
             wl_pointer::Event::Leave { .. } => {
                 state.pointer_id = 0;
+                crate::wakeup::notify();
             }
             wl_pointer::Event::Motion {
                 surface_x,
@@ -195,6 +221,7 @@ impl Dispatch<WlPointer, ()> for Input {
             } => {
                 state.x = surface_x;
                 state.y = surface_y;
+                crate::wakeup::notify();
             }
             wl_pointer::Event::Button {
                 button, state: btn, ..
@@ -376,6 +403,7 @@ fn setup(surface: *mut c_void) -> bool {
         _registry: registry,
         input,
     });
+    start_pump();
     true
 }
 

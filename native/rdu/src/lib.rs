@@ -2,6 +2,7 @@
 
 mod abi;
 mod audio;
+mod wakeup;
 
 #[cfg(target_os = "macos")]
 mod macos;

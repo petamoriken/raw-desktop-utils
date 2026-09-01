@@ -9,6 +9,7 @@ import { ABI_VERSION, QUEUED_EVENT_BYTES, SNAPSHOT_BYTES } from "./abi.ts";
 import type { NativeBackend } from "./backend.ts";
 import { decodeQueuedEvents, decodeSnapshot } from "./decode.ts";
 import { materializeLibrary } from "./load.ts";
+import { NativeNotify } from "./notify.ts";
 import { RDU_SYMBOLS, type RduLibrary } from "./symbols.ts";
 
 function cstr(text: string): Uint8Array {
@@ -18,9 +19,11 @@ function cstr(text: string): Uint8Array {
 export class WindowsBackend implements NativeBackend {
   readonly os = "windows";
   readonly #dl: RduLibrary;
+  readonly #notify: NativeNotify;
 
   constructor(dl: RduLibrary) {
     this.#dl = dl;
+    this.#notify = new NativeNotify(dl.symbols.rdu_set_notify);
   }
 
   get abiVersion(): number {
@@ -54,6 +57,10 @@ export class WindowsBackend implements NativeBackend {
     const n = this.#dl.symbols.rdu_poll_events(handle, buf, cap);
     if (n <= 0) return [];
     return decodeQueuedEvents(buf, n, windowsKeys);
+  }
+
+  setNotify(handler: (() => void) | null): boolean {
+    return this.#notify.set(handler);
   }
 
   [kCustomInspect](inspect: InspectFn, options?: Deno.InspectOptions): string {

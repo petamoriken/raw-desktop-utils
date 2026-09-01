@@ -17,7 +17,6 @@ const win = new Deno.BrowserWindow({
 using input = await attach(win, { title: TITLE });
 
 function frame(_time: number) {
-  input.poll();
   input.requestAnimationFrame(frame);
 }
 input.requestAnimationFrame(frame);

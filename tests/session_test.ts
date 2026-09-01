@@ -26,16 +26,19 @@ class FakeBackend implements NativeBackend {
   #samples: PointerSnapshot[];
   #queued: NativeQueuedEvent[][];
   #found: Deno.PointerValue;
+  #notifyEnabled: boolean;
+  #notify: (() => void) | null = null;
 
   constructor(
     samples: PointerSnapshot[],
     queued: NativeQueuedEvent[][] = [],
-    options: { os?: string; found?: Deno.PointerValue } = {},
+    options: { os?: string; found?: Deno.PointerValue; notify?: boolean } = {},
   ) {
     this.os = options.os ?? "test";
     this.#samples = samples;
     this.#queued = queued;
     this.#found = options.found ?? null;
+    this.#notifyEnabled = options.notify !== false;
   }
 
   findWindow(_title: string): Deno.PointerValue {
@@ -53,6 +56,14 @@ class FakeBackend implements NativeBackend {
   }
   pollEvents(_handle: Deno.PointerValue): NativeQueuedEvent[] {
     return this.#queued.shift() ?? [];
+  }
+  setNotify(handler: (() => void) | null): boolean {
+    if (!this.#notifyEnabled) return false;
+    this.#notify = handler;
+    return true;
+  }
+  wake(): void {
+    this.#notify?.();
   }
 }
 
@@ -219,6 +230,58 @@ Deno.test("attachWith falls back to getNativeWindow on Linux", async () => {
   );
   assertEquals(win.nativeCalls, 1);
   session.poll();
+});
+
+Deno.test("native wakeup dispatches without an explicit poll", async () => {
+  const backend = new FakeBackend([
+    snap({ clientX: 1, clientY: 2, buttons: 1 }),
+  ]);
+  using session = new InputSession(
+    desktopWindow(),
+    backend,
+    Deno.UnsafePointer.of(new Uint8Array(1)),
+    {},
+  );
+  const seen: string[] = [];
+  session.addEventListener("pointerdown", () => seen.push("pointerdown"));
+  backend.wake();
+  await Promise.resolve();
+  assertEquals(seen, ["pointerdown"]);
+});
+
+Deno.test("listeners without native wakeup still pump on a frame clock", async () => {
+  const backend = new FakeBackend([snap({ clientX: 8, clientY: 9 })], [], {
+    notify: false,
+  });
+  using session = new InputSession(
+    desktopWindow(),
+    backend,
+    Deno.UnsafePointer.of(new Uint8Array(1)),
+    {},
+  );
+  const seen: string[] = [];
+  session.addEventListener("pointerenter", () => seen.push("pointerenter"));
+  const start = Date.now();
+  while (seen.length === 0 && Date.now() - start < 200) {
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  assertEquals(seen, ["pointerenter"]);
+});
+
+Deno.test("requestAnimationFrame polls before the callback", async () => {
+  const backend = new FakeBackend([snap({ clientX: 5, clientY: 6 })]);
+  using session = new InputSession(
+    desktopWindow(),
+    backend,
+    Deno.UnsafePointer.of(new Uint8Array(1)),
+    {},
+  );
+  const seen: string[] = [];
+  session.addEventListener("pointerenter", () => seen.push("pointerenter"));
+  await new Promise<void>((resolve) => {
+    session.requestAnimationFrame(() => resolve());
+  });
+  assertEquals(seen, ["pointerenter"]);
 });
 
 Deno.test("poll drains the native queue before sampling", () => {
