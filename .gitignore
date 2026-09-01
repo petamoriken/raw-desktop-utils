@@ -7,4 +7,3 @@ native/rdu/target
 hit-test.dylib
 hit-test.app.dylib
 examples/*.log
-examples/libfill.dylib

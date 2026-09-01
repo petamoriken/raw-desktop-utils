@@ -16,6 +16,7 @@ declare global {
       };
       getSize(): [number, number];
       close(): void;
+      isClosed(): boolean;
     }
   }
 }

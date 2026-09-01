@@ -1,35 +1,33 @@
 /// <reference path="../src/desktop.d.ts" />
 /**
- * Two undecorated rectangles. Hover lightens a rect; click turns it white.
+ * Two logical rectangles. Hover and click are logged; there is no native
+ * blit because raw has none that is portable.
  *
- * Hover comes from the pointer snapshot; clicks come from the native queue
- * (local NSEvent monitor plus Combined Session button sampler). Synthesized
- * keys are not captured; this helper does not request Input Monitoring or
- * Accessibility.
+ * Hover comes from the pointer snapshot; clicks come from the native queue.
+ * Synthesized keys are not captured; this helper does not request Input
+ * Monitoring or Accessibility.
  *
- * Do not run this file with bare `deno desktop`: that defaults to the
- * webview backend and attach fails (`native window not found`). On
- * aarch64-apple-darwin the raw backend also has no `.app` template, so
+ * Close chrome is left to `deno desktop`. Listen for `BrowserWindow`
+ * `"close"` (and `isClosed()`): a live timer keeps the process up after the
+ * window is gone, so the handler must `Deno.exit`. Do not run this file
+ * with bare `deno desktop` on aarch64-apple-darwin (no raw `.app` template);
  * package it with `laufey_winit`:
  *
  *   deno task example
  *
- * That writes `hit-test.app` and opens it. JSON lines go to
- * `$RDU_HIT_TEST_LOG` (default `$TMPDIR/rdu-hit-test.log`).
+ * Elsewhere `deno task example` just runs `deno desktop` against this file.
+ * JSON lines go to `$RDU_HIT_TEST_LOG` (default `$TMPDIR/rdu-hit-test.log`).
  */
 import { attach } from "../mod.ts";
-import { fillView, findView } from "./fill.ts";
 
 const TITLE = "rdu hit-test";
 const LOG = Deno.env.get("RDU_HIT_TEST_LOG") ??
   `${
-    (Deno.env.get("TMPDIR") ?? "/tmp").replace(/[/\\]+$/, "")
+    (Deno.env.get("TMPDIR") ?? Deno.env.get("TMP") ?? "/tmp").replace(
+      /[/\\]+$/,
+      "",
+    )
   }/rdu-hit-test.log`;
-
-const BG = [0.12, 0.12, 0.12, 1] as const;
-const IDLE = [0.28, 0.28, 0.28, 1] as const;
-const HOVER = [0.72, 0.72, 0.72, 1] as const;
-const DOWN = [1, 1, 1, 1] as const;
 
 const BUTTONS = [
   { id: "a", x: 40, y: 120, w: 240, h: 80 },
@@ -47,7 +45,6 @@ const win = new Deno.BrowserWindow({
 });
 
 const input = await attach(win, { title: TITLE, locateTimeoutMs: 2000 });
-const view = findView(TITLE);
 
 await Deno.writeTextFile(LOG, "");
 
@@ -63,42 +60,48 @@ function record(kind: string, extra: Record<string, unknown> = {}) {
   Deno.writeTextFileSync(LOG, `${line}\n`, { append: true });
 }
 
-function inView(x: number, y: number): boolean {
+function inContent(x: number, y: number): boolean {
   const w = input.innerWidth;
   const h = input.innerHeight;
   return w > 0 && h > 0 && x >= 0 && y >= 0 && x <= w && y <= h;
 }
 
-function paint() {
-  if (!view) return;
-  fillView(
-    view,
-    BG,
-    BUTTONS.map((b) => ({
-      x: b.x,
-      y: b.y,
-      w: b.w,
-      h: b.h,
-      rgba: down === b.id ? DOWN : hover === b.id ? HOVER : IDLE,
-    })),
-  );
+function windowIsClosed(): boolean {
+  return typeof win.isClosed === "function" && win.isClosed();
 }
 
 let hover: string | null = null;
 let down: string | null = null;
-paint();
+let quitting = false;
+
+function quit() {
+  if (quitting) return;
+  quitting = true;
+  record("quit", {});
+  clearInterval(pollTimer);
+  input.close();
+  try {
+    win.close();
+  } catch {
+    // already gone
+  }
+  Deno.exit(0);
+}
 
 // Raw winit has a host rAF that never ticks unless something presents.
-// Drive poll ourselves so hover / click / close stay live.
+// Drive poll ourselves so hover / click stay live. Chrome clicks are not
+// handled here: `BrowserWindow` "close" / `isClosed()` own that.
 const pollTimer = setInterval(() => {
+  if (windowIsClosed()) {
+    quit();
+    return;
+  }
   const snap = input.poll();
-  const next = inView(snap.clientX, snap.clientY)
+  const next = inContent(snap.clientX, snap.clientY)
     ? hit(snap.clientX, snap.clientY)?.id ?? null
     : null;
   const pressed = (snap.buttons & 1) !== 0 ? (next ?? down) : null;
-  const hoverChanged = next !== hover;
-  const downChanged = pressed !== down;
-  if (hoverChanged) {
+  if (next !== hover) {
     hover = next;
     record("hover", {
       id: hover,
@@ -108,11 +111,11 @@ const pollTimer = setInterval(() => {
       buttons: snap.buttons,
     });
   }
-  if (downChanged) down = pressed;
-  if (hoverChanged || downChanged) paint();
+  if (pressed !== down) down = pressed;
 }, 16);
 
 input.addEventListener("pointerdown", (event) => {
+  if (!inContent(event.clientX, event.clientY)) return;
   const target = hit(event.clientX, event.clientY);
   down = target?.id ?? null;
   record("pointerdown", {
@@ -121,10 +124,24 @@ input.addEventListener("pointerdown", (event) => {
     y: event.clientY,
     id: down,
   });
-  paint();
+});
+
+input.addEventListener("pointerup", (event) => {
+  if (!inContent(event.clientX, event.clientY) && down === null) return;
+  record("pointerup", {
+    button: event.button,
+    x: event.clientX,
+    y: event.clientY,
+    id: down,
+  });
+  down = null;
 });
 
 input.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    quit();
+    return;
+  }
   record("keydown", {
     key: event.key,
     code: event.code,
@@ -145,21 +162,6 @@ input.addEventListener("keyup", (event) => {
   });
 });
 
-input.addEventListener("pointerup", (event) => {
-  record("pointerup", {
-    button: event.button,
-    x: event.clientX,
-    y: event.clientY,
-    id: down,
-  });
-  down = null;
-  paint();
-});
-
-win.addEventListener("close", () => {
-  clearInterval(pollTimer);
-  input.close();
-  Deno.exit(0);
-});
+win.addEventListener("close", quit);
 
 record("ready", { title: TITLE, log: LOG });

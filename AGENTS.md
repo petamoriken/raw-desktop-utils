@@ -120,5 +120,7 @@ This is not a browser. After input, hit-test, or native ABI changes:
 
 1. `deno task check`
 2. If Rust changed, confirm `native/prebuilt/` was regenerated
-3. For real pointer/click behavior, run `deno task example` (`hit-test.app`) and
-   hover/click the content view. Bare `deno desktop` uses webview.
+3. For real pointer/click behavior, run `deno task example` and hover/click the
+   content view. Close chrome is left to `deno desktop` (`BrowserWindow`
+   `"close"` + `Deno.exit`). On aarch64-apple-darwin that task wraps
+   `laufey_winit` as `hit-test.app`; elsewhere it runs `deno desktop`.

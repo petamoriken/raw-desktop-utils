@@ -1,19 +1,27 @@
 #!/usr/bin/env -S deno run --allow-run --allow-read --allow-write --allow-env --allow-ffi
 /**
- * Compile `examples/hit-test.ts` as a raw desktop app and wrap it as
- * `hit-test.app` around `laufey_winit`.
+ * Run `examples/hit-test.ts` as a raw desktop app.
  *
- * `deno desktop --backend raw` does not ship a raw `.app` template on
- * aarch64-apple-darwin, so the compile step is expected to fail at wrap
- * time after writing the runtime dylib.
+ * On aarch64-apple-darwin, `deno desktop` has no raw `.app` template, so
+ * this compiles the script and wraps it as `hit-test.app` around
+ * `laufey_winit`. Elsewhere it just invokes `deno desktop`.
  */
 const root = new URL("../", import.meta.url);
 const appUrl = new URL("hit-test.app", root);
-const fillSrc = new URL("examples/fill.m", root);
-const fillDylib = new URL("examples/libfill.dylib", root);
+const DESKTOP_ALLOW = [
+  "--allow-read",
+  "--allow-write",
+  "--allow-ffi",
+  "--allow-env",
+] as const;
 
 function pathOf(url: URL): string {
-  return url.pathname;
+  if (url.protocol !== "file:") throw new Error(url.href);
+  let path = decodeURIComponent(url.pathname);
+  if (Deno.build.os === "windows" && /^\/[A-Za-z]:/.test(path)) {
+    path = path.slice(1);
+  }
+  return path;
 }
 
 async function run(
@@ -121,38 +129,10 @@ exec "$DIR/laufey_winit" --runtime "$DIR/hit-test.dylib" "$@"
   console.log(`wrote ${app}`);
 }
 
-async function compileFill() {
-  const src = pathOf(fillSrc);
-  const out = pathOf(fillDylib);
-  try {
-    const built = Deno.statSync(out);
-    const m = Deno.statSync(src);
-    if (built.mtime && m.mtime && built.mtime >= m.mtime) return;
-  } catch {
-    // rebuild
-  }
-  const code = await run("cc", [
-    "-dynamiclib",
-    "-o",
-    out,
-    src,
-    "-framework",
-    "AppKit",
-    "-framework",
-    "QuartzCore",
-  ]);
-  if (code !== 0) throw new Error("cc examples/fill.m failed");
-}
-
 async function compileRuntime(): Promise<string> {
   const code = await run(Deno.execPath(), [
     "desktop",
-    "--backend",
-    "raw",
-    "--allow-read",
-    "--allow-write",
-    "--allow-ffi",
-    "--allow-env",
+    ...DESKTOP_ALLOW,
     "--output",
     pathOf(new URL("hit-test", root)),
     "examples/hit-test.ts",
@@ -171,11 +151,25 @@ async function compileRuntime(): Promise<string> {
   return dylib;
 }
 
-await compileFill();
-const runtime = await compileRuntime();
-await assembleApp(runtime);
+async function runDesktop() {
+  const code = await run(Deno.execPath(), [
+    "desktop",
+    ...DESKTOP_ALLOW,
+    "examples/hit-test.ts",
+  ], pathOf(root));
+  if (code !== 0) throw new Error(`deno desktop exited ${code}`);
+}
 
-if (!Deno.args.includes("--no-open")) {
-  const code = await run("open", [pathOf(appUrl)]);
-  if (code !== 0) throw new Error("open hit-test.app failed");
+const needsAppBundle = Deno.build.os === "darwin" &&
+  Deno.build.arch === "aarch64";
+
+if (needsAppBundle) {
+  const runtime = await compileRuntime();
+  await assembleApp(runtime);
+  if (!Deno.args.includes("--no-open")) {
+    const code = await run("open", [pathOf(appUrl)]);
+    if (code !== 0) throw new Error("open hit-test.app failed");
+  }
+} else {
+  await runDesktop();
 }
