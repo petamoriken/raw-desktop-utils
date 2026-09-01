@@ -43,28 +43,6 @@ export type PointerEventInit = MouseEventInit & {
   isPrimary?: boolean;
 };
 
-export type WheelEventInit = MouseEventInit & {
-  deltaX?: number;
-  deltaY?: number;
-  deltaZ?: number;
-  deltaMode?: number;
-};
-
-export type KeyboardEventInit = UIEventInit & {
-  key?: string;
-  code?: string;
-  location?: number;
-  ctrlKey?: boolean;
-  shiftKey?: boolean;
-  altKey?: boolean;
-  metaKey?: boolean;
-  /** `getModifierState("CapsLock")`. Not a standard `KeyboardEventInit` field. */
-  capsLock?: boolean;
-  repeat?: boolean;
-  isComposing?: boolean;
-  keyCode?: number;
-};
-
 export type CompositionEventInit = UIEventInit & {
   data?: string;
 };
@@ -364,163 +342,6 @@ export class PointerEvent extends MouseEvent {
   }
 }
 
-export class WheelEvent extends MouseEvent {
-  readonly #deltaX: number;
-  readonly #deltaY: number;
-  readonly #deltaZ: number;
-  readonly #deltaMode: number;
-
-  constructor(type: string, init: WheelEventInit = {}) {
-    super(type, { ...init, button: init.button ?? 0 });
-    this.#deltaX = init.deltaX ?? 0;
-    this.#deltaY = init.deltaY ?? 0;
-    this.#deltaZ = init.deltaZ ?? 0;
-    this.#deltaMode = init.deltaMode ?? 0;
-  }
-
-  get deltaX(): number {
-    return this.#deltaX;
-  }
-  get deltaY(): number {
-    return this.#deltaY;
-  }
-  get deltaZ(): number {
-    return this.#deltaZ;
-  }
-  get deltaMode(): number {
-    return this.#deltaMode;
-  }
-
-  static readonly DOM_DELTA_PIXEL = 0;
-  static readonly DOM_DELTA_LINE = 1;
-  static readonly DOM_DELTA_PAGE = 2;
-
-  override [kCustomInspect](
-    inspect: InspectFn,
-    options?: Deno.InspectOptions,
-  ): string {
-    return inspectBranded(
-      #deltaX in this,
-      "WheelEvent",
-      () => ({
-        type: this.type,
-        clientX: this.clientX,
-        clientY: this.clientY,
-        deltaX: this.#deltaX,
-        deltaY: this.#deltaY,
-        deltaZ: this.#deltaZ,
-        deltaMode: this.#deltaMode,
-        ctrlKey: this.ctrlKey,
-        shiftKey: this.shiftKey,
-        altKey: this.altKey,
-        metaKey: this.metaKey,
-      }),
-      inspect,
-      options,
-    );
-  }
-}
-
-export class KeyboardEvent extends UIEvent {
-  readonly #key: string;
-  readonly #code: string;
-  readonly #location: number;
-  readonly #ctrlKey: boolean;
-  readonly #shiftKey: boolean;
-  readonly #altKey: boolean;
-  readonly #metaKey: boolean;
-  readonly #capsLock: boolean;
-  readonly #repeat: boolean;
-  readonly #isComposing: boolean;
-  readonly #keyCode: number;
-
-  constructor(type: string, init: KeyboardEventInit = {}) {
-    super(type, init);
-    this.#key = init.key ?? "";
-    this.#code = init.code ?? "";
-    this.#location = init.location ?? 0;
-    this.#ctrlKey = init.ctrlKey ?? false;
-    this.#shiftKey = init.shiftKey ?? false;
-    this.#altKey = init.altKey ?? false;
-    this.#metaKey = init.metaKey ?? false;
-    this.#capsLock = init.capsLock ?? false;
-    this.#repeat = init.repeat ?? false;
-    this.#isComposing = init.isComposing ?? false;
-    this.#keyCode = init.keyCode ?? 0;
-  }
-
-  get key(): string {
-    return this.#key;
-  }
-  get code(): string {
-    return this.#code;
-  }
-  get location(): number {
-    return this.#location;
-  }
-  get ctrlKey(): boolean {
-    return this.#ctrlKey;
-  }
-  get shiftKey(): boolean {
-    return this.#shiftKey;
-  }
-  get altKey(): boolean {
-    return this.#altKey;
-  }
-  get metaKey(): boolean {
-    return this.#metaKey;
-  }
-  get repeat(): boolean {
-    return this.#repeat;
-  }
-  get isComposing(): boolean {
-    return this.#isComposing;
-  }
-  get keyCode(): number {
-    return this.#keyCode;
-  }
-
-  getModifierState(key: string): boolean {
-    return modifierState(key, {
-      altKey: this.#altKey,
-      ctrlKey: this.#ctrlKey,
-      metaKey: this.#metaKey,
-      shiftKey: this.#shiftKey,
-      capsLock: this.#capsLock,
-    });
-  }
-
-  static readonly DOM_KEY_LOCATION_STANDARD = 0;
-  static readonly DOM_KEY_LOCATION_LEFT = 1;
-  static readonly DOM_KEY_LOCATION_RIGHT = 2;
-  static readonly DOM_KEY_LOCATION_NUMPAD = 3;
-
-  override [kCustomInspect](
-    inspect: InspectFn,
-    options?: Deno.InspectOptions,
-  ): string {
-    return inspectBranded(
-      #key in this,
-      "KeyboardEvent",
-      () => ({
-        type: this.type,
-        key: this.#key,
-        code: this.#code,
-        keyCode: this.#keyCode,
-        location: this.#location,
-        repeat: this.#repeat,
-        isComposing: this.#isComposing,
-        ctrlKey: this.#ctrlKey,
-        shiftKey: this.#shiftKey,
-        altKey: this.#altKey,
-        metaKey: this.#metaKey,
-      }),
-      inspect,
-      options,
-    );
-  }
-}
-
 export class CompositionEvent extends UIEvent {
   readonly #data: string;
 
@@ -549,25 +370,10 @@ export class CompositionEvent extends UIEvent {
 
 export type SynthesizedEvent =
   | PointerEvent
-  | MouseEvent
-  | WheelEvent
-  | KeyboardEvent
   | CompositionEvent;
 
 /** Clone so a second `EventTarget` can dispatch without sharing `target` / canceled. */
 export function cloneSynthesized(event: SynthesizedEvent): SynthesizedEvent {
-  if (event instanceof PointerEvent) {
-    return new PointerEvent(event.type, copyPointer(event));
-  }
-  if (event instanceof WheelEvent) {
-    return new WheelEvent(event.type, {
-      ...copyMouse(event),
-      deltaX: event.deltaX,
-      deltaY: event.deltaY,
-      deltaZ: event.deltaZ,
-      deltaMode: event.deltaMode,
-    });
-  }
   if (event instanceof CompositionEvent) {
     return new CompositionEvent(event.type, {
       bubbles: event.bubbles,
@@ -577,26 +383,7 @@ export function cloneSynthesized(event: SynthesizedEvent): SynthesizedEvent {
       data: event.data,
     });
   }
-  if (event instanceof KeyboardEvent) {
-    return new KeyboardEvent(event.type, {
-      bubbles: event.bubbles,
-      cancelable: event.cancelable,
-      view: event.view,
-      detail: event.detail,
-      key: event.key,
-      code: event.code,
-      location: event.location,
-      ctrlKey: event.ctrlKey,
-      shiftKey: event.shiftKey,
-      altKey: event.altKey,
-      metaKey: event.metaKey,
-      capsLock: event.getModifierState("CapsLock"),
-      repeat: event.repeat,
-      isComposing: event.isComposing,
-      keyCode: event.keyCode,
-    });
-  }
-  return new MouseEvent(event.type, copyMouse(event));
+  return new PointerEvent(event.type, copyPointer(event));
 }
 
 function copyMouse(event: MouseEvent): MouseEventInit {

@@ -29,9 +29,9 @@ export const MOD_ALT = 4;
 export const MOD_META = 8;
 /** `getModifierState("CapsLock")`. */
 export const MOD_CAPS = 16;
-/** Key event only: `KeyboardEvent.repeat`. */
+/** Native key-repeat bit. */
 export const MOD_REPEAT = 64;
-/** Key event only: `KeyboardEvent.isComposing`. */
+/** Native composing bit. */
 export const MOD_COMPOSING = 128;
 
 export type NativePointerKind = 0 | 1 | 2;
@@ -141,7 +141,6 @@ export type AttachOptions = {
   native?: Deno.PointerValue;
   display?: Deno.PointerValue;
   target?: EventTarget;
-  mouseEvents?: boolean;
   locateTimeoutMs?: number;
 };
 

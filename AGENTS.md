@@ -2,7 +2,10 @@
 
 Utilities for `deno desktop` raw windows (input session, DOM-shaped events,
 requestAnimationFrame) plus a standalone Web Audio subset. Intended for JSR.
-Comments, commit messages, and this file are English.
+This package is a supplement: if `deno desktop` already has the API, use that
+(`BrowserWindow` mouse / keyboard / wheel / close / resize, host event classes).
+The session owns Pointer Events, composition, rAF, and window / `Screen`
+geometry. Comments, commit messages, and this file are English.
 
 `README.md` is the public doc: MDN links for the Web-shaped API (URLs without
 `/en-US`, so MDN redirects by locale), then what a page author would notice
@@ -12,8 +15,11 @@ Those host bugs start at
 off) and [denoland/deno#36738](https://github.com/denoland/deno/issues/36738)
 (`getNativeWindow()` panics off-main on macOS); Related on those tickets reaches
 #36594 (no raw `.app` on aarch64-apple-darwin) and #36001 (Windows raw WebGPU
-`present()` panic). Do not re-explain MDN types in the README or in source
-comments.
+`present()` panic). README also lists raw macOS `BrowserWindow` input gaps
+(physical `clientX` / `getSize()`, copied `screenX`, no `buttons`, first
+`mouseenter` at `(0, 0)`, no `dblclick`, inverted wheel `deltaY`, sticky
+`shiftKey`). Host `timeStamp` is `0` on purpose. Do not re-explain MDN types in
+the README or in source comments.
 
 ## Commands
 
@@ -36,29 +42,35 @@ take `--allow-run`.
 ## Architecture
 
 - Public surface (`mod.ts`, `src/platforms/*`) is browser-shaped: `attach`,
-  `InputSession`, `Screen`, DOM event classes. `requestAnimationFrame` /
-  `cancelAnimationFrame` live on the session `attach` returns, along with
-  `devicePixelRatio`, `screenX` / `screenY`, `innerWidth` / `innerHeight`,
-  `outerWidth` / `outerHeight`, and `screen`. Audio (`AudioContext` and nodes)
-  is a standalone `mod.ts` export, not on `InputSession`. Do not export key
-  tables, inspect symbols, or native internals.
+  `InputSession`, `Screen`, Pointer / Composition / UI / Mouse event classes. Do
+  not re-export `KeyboardEvent` or `WheelEvent` — the host already has those.
+  `requestAnimationFrame` / `cancelAnimationFrame` live on the session `attach`
+  returns, along with `devicePixelRatio`, `screenX` / `screenY`, `innerWidth` /
+  `innerHeight`, `outerWidth` / `outerHeight`, and `screen`. Audio
+  (`AudioContext` and nodes) is a standalone `mod.ts` export, not on
+  `InputSession`. Do not export key tables, inspect symbols, or native
+  internals.
 - Web Audio lives in TypeScript (`src/audio/`). The native helper is a PCM sink
   (`rdu_audio_*`, cpal + lock-free ring). Quantum size comes from
   `AudioContextOptions.renderSizeHint` / `renderQuantumSize` (default 128).
   After changing `native/rdu/src/audio.rs`, rebuild the prebuilt. ABI is 3.
 - `InputSession.poll()` diffs a native snapshot plus a queued event list into
-  Pointer / Mouse / Wheel / Keyboard / Composition events. The session also
-  polls on native wakeup (`rdu_set_notify`, every backend) and immediately
-  before `requestAnimationFrame` callbacks. Listeners go on the **session**, not
-  `BrowserWindow` (that source can double-fire). Keep `poll()` for tests and the
-  fallback frame clock. On macOS the queue is a local NSEvent monitor plus a 4
-  ms Combined Session button and key sampler. Do not add a CGEvent tap or global
-  monitor (those need Input Monitoring / Accessibility). Quartz posts update
-  `mouseLocation` (hover works) but often skip the local monitor and
-  `NSEvent.pressedMouseButtons`. Off-main AppKit work hops to the main queue
-  when it pumps, and runs inline under `deno test` so `exec_sync` cannot
-  deadlock. Never invoke JS from the monitor, hook, or sampler: `wakeup.rs`
-  calls the isolate from its own thread.
+  Pointer and Composition events. Queued key and wheel records are drained so
+  they do not stall the ABI, but they are not turned into DOM events —
+  `BrowserWindow` already dispatches those. The session also polls on native
+  wakeup (`rdu_set_notify`, every backend) and immediately before
+  `requestAnimationFrame` callbacks. Pointer / composition listeners go on the
+  **session**; mouse / keyboard / wheel / close / resize stay on
+  `BrowserWindow`. Listening on both for the same physical input double-fires.
+  Host input `timeStamp` is `0` on purpose (skip the clock sample), not a
+  missing field. Keep `poll()` for tests and the fallback frame clock. On macOS
+  the queue is a local NSEvent monitor plus a 4 ms Combined Session button and
+  key sampler. Do not add a CGEvent tap or global monitor (those need Input
+  Monitoring / Accessibility). Quartz posts update `mouseLocation` (hover works)
+  but often skip the local monitor and `NSEvent.pressedMouseButtons`. Off-main
+  AppKit work hops to the main queue when it pumps, and runs inline under
+  `deno test` so `exec_sync` cannot deadlock. Never invoke JS from the monitor,
+  hook, or sampler: `wakeup.rs` calls the isolate from its own thread.
 - Coordinates are content-view logical pixels, **top-left** origin (`clientX` /
   `clientY`), in the same space as `window.getSize()`.
 - Native helper is the Rust cdylib `native/rdu`. macOS is AppKit (`macos.rs`);
@@ -136,18 +148,17 @@ take `--allow-run`.
   press or release for a button whose edge the snapshot already reported is
   dropped. Otherwise the two sources replay each other's edges. Because either
   source can win, `detail` is threaded across polls in `SynthResult.clickCounts`
-  — the release has to report the count of the press it ends, or `dblclick`
-  never fires.
+  — the release has to report the count of the press it ends.
 - A press inside captures the pointer, like a browser: `pointermove` keeps
   firing past the edge with out-of-range `clientX` / `clientY` until the button
-  comes up, and that release is not a `click`. `SynthResult.captured` carries it
-  across polls next to `clickCounts`, so a drag that began in another window
-  reports nothing. A queued event's `inside` is its own bounds, never a blanket
-  `true`, or a release past the edge reads as a re-entry. macOS samples
-  `mouseLocation` globally. X11's implicit grab goes to the window owner, so a 4
-  ms `query_pointer` sampler wakes the drag after MotionNotify stops. Wayland
-  only sees the seat; `applyViewBounds` treats out-of-surface coords as outside
-  when the compositor keeps sending motion under the grab. The Wayland pump
+  comes up. `SynthResult.captured` carries it across polls next to
+  `clickCounts`, so a drag that began in another window reports nothing. A
+  queued event's `inside` is its own bounds, never a blanket `true`, or a
+  release past the edge reads as a re-entry. macOS samples `mouseLocation`
+  globally. X11's implicit grab goes to the window owner, so a 4 ms
+  `query_pointer` sampler wakes the drag after MotionNotify stops. Wayland only
+  sees the seat; `applyViewBounds` treats out-of-surface coords as outside when
+  the compositor keeps sending motion under the grab. The Wayland pump
   dispatches on a timer but notifies only when seat state or the queue changed.
 - Close a native audio sink you opened. `AudioContext` only closes a sink it
   created itself, and a leaked one takes the process down with an access

@@ -1,20 +1,13 @@
 import {
   CompositionEvent,
   type CompositionEventInit,
-  KeyboardEvent,
-  type KeyboardEventInit,
-  MouseEvent,
   type MouseEventInit,
   PointerEvent,
   type PointerEventInit,
   type SynthesizedEvent,
-  WheelEvent,
-  type WheelEventInit,
 } from "./events.ts";
 import {
   bitFromButton,
-  BUTTON_PRIMARY,
-  BUTTON_SECONDARY,
   buttonFromBit,
   effectivePressure,
   MOD_ALT,
@@ -32,7 +25,6 @@ import {
 } from "./types.ts";
 
 export type SynthesizeOptions = {
-  mouseEvents?: boolean;
   view?: EventTarget | null;
   pointerId?: number;
   /** Per-button `detail` from the last poll, so a release can report the press it ends. */
@@ -118,13 +110,6 @@ function pointerInit(
   };
 }
 
-function mouseInit(
-  pointer: PointerEventInit,
-  extra: Partial<MouseEventInit> = {},
-): MouseEventInit {
-  return { ...pointer, ...extra };
-}
-
 export type SynthResult = {
   events: SynthesizedEvent[];
   state: PointerSnapshot;
@@ -136,13 +121,8 @@ function pushPointer(
   out: SynthesizedEvent[],
   type: string,
   init: PointerEventInit,
-  mouseType: string | null,
-  opts: SynthesizeOptions,
 ) {
   out.push(new PointerEvent(type, init));
-  if (opts.mouseEvents !== false && mouseType) {
-    out.push(new MouseEvent(mouseType, mouseInit(init)));
-  }
 }
 
 function enterLeave(
@@ -155,14 +135,8 @@ function enterLeave(
   if (wasIn === next.inside) return;
   if (next.inside) {
     const init = pointerInit(next, prev, { button: 0, detail: 0 }, opts);
-    pushPointer(out, "pointerover", init, "mouseover", opts);
-    pushPointer(
-      out,
-      "pointerenter",
-      { ...init, bubbles: false },
-      "mouseenter",
-      opts,
-    );
+    pushPointer(out, "pointerover", init);
+    pushPointer(out, "pointerenter", { ...init, bubbles: false });
   } else {
     const from = prev ?? next;
     const init = pointerInit(from, prev, {
@@ -173,14 +147,8 @@ function enterLeave(
       screenX: next.screenX,
       screenY: next.screenY,
     }, opts);
-    pushPointer(out, "pointerout", init, "mouseout", opts);
-    pushPointer(
-      out,
-      "pointerleave",
-      { ...init, bubbles: false },
-      "mouseleave",
-      opts,
-    );
+    pushPointer(out, "pointerout", init);
+    pushPointer(out, "pointerleave", { ...init, bubbles: false });
   }
 }
 
@@ -212,7 +180,7 @@ function fireMove(
 ) {
   if (!next.inside && !prev?.inside && !dragging(prev, next, opts)) return;
   const init = pointerInit(next, prev, { button: -1, detail: 0 }, opts);
-  pushPointer(out, "pointermove", init, "mousemove", opts);
+  pushPointer(out, "pointermove", init);
 }
 
 function fireButtonDown(
@@ -229,7 +197,7 @@ function fireButtonDown(
     buttons,
     detail: clickCount,
   }, opts);
-  pushPointer(out, "pointerdown", init, "mousedown", opts);
+  pushPointer(out, "pointerdown", init);
 }
 
 function fireButtonUp(
@@ -238,7 +206,6 @@ function fireButtonUp(
   next: PointerSnapshot,
   button: number,
   clickCount: number,
-  fireClick: boolean,
   opts: SynthesizeOptions,
 ) {
   const buttons = next.buttons & ~bitFromButton(button);
@@ -247,25 +214,7 @@ function fireButtonUp(
     buttons,
     detail: clickCount,
   }, opts);
-  pushPointer(out, "pointerup", init, "mouseup", opts);
-  if (!fireClick || !next.inside) return;
-  if (button === BUTTON_PRIMARY) {
-    if (opts.mouseEvents !== false) {
-      out.push(new MouseEvent("click", mouseInit(init)));
-      if (clickCount === 2) {
-        out.push(new MouseEvent("dblclick", mouseInit(init)));
-      }
-    }
-  } else {
-    if (opts.mouseEvents !== false) {
-      out.push(new MouseEvent("auxclick", mouseInit(init)));
-      if (button === BUTTON_SECONDARY) {
-        out.push(
-          new MouseEvent("contextmenu", mouseInit(init, { cancelable: true })),
-        );
-      }
-    }
-  }
+  pushPointer(out, "pointerup", init);
 }
 
 function applyButtonDelta(
@@ -290,7 +239,7 @@ function applyButtonDelta(
       const button = buttonFromBit(bit);
       const count = counts[button] ?? 1;
       delete counts[button];
-      fireButtonUp(out, prev, next, button, count, next.inside, opts);
+      fireButtonUp(out, prev, next, button, count, opts);
     }
   }
 }
@@ -302,8 +251,7 @@ function queuedToSnapshot(
   return {
     ...base,
     // The event is ours by construction, so bounds are the whole test. A drag
-    // that releases past the edge must not read as a re-entry, and must not
-    // turn into a `click`.
+    // that releases past the edge must not read as a re-entry.
     inside: ev.clientX >= 0 && ev.clientY >= 0 &&
       ev.clientX < base.viewWidth && ev.clientY < base.viewHeight,
     clientX: ev.clientX,
@@ -319,44 +267,6 @@ function queuedToSnapshot(
     pointerType: ev.pointerType || base.pointerType,
     valid: true,
   };
-}
-
-function fireWheel(
-  out: SynthesizedEvent[],
-  prev: PointerSnapshot | null,
-  next: PointerSnapshot,
-  ev: NativeQueuedEvent,
-  opts: SynthesizeOptions,
-) {
-  const init: WheelEventInit = {
-    ...pointerInit(next, prev, { button: 0, detail: 0 }, opts),
-    deltaX: ev.deltaX,
-    deltaY: ev.deltaY,
-    deltaZ: ev.deltaZ,
-    deltaMode: ev.deltaMode,
-  };
-  out.push(new WheelEvent("wheel", init));
-}
-
-function fireKey(
-  out: SynthesizedEvent[],
-  ev: NativeQueuedEvent,
-  opts: SynthesizeOptions,
-) {
-  const type = ev.type === 4 ? "keydown" : "keyup";
-  const init: KeyboardEventInit = {
-    bubbles: true,
-    cancelable: true,
-    view: opts.view ?? null,
-    key: ev.key,
-    code: ev.code,
-    location: ev.location,
-    keyCode: ev.keyCode,
-    repeat: ev.repeat,
-    isComposing: ev.isComposing,
-    ...modifiers(ev.modifiers),
-  };
-  out.push(new KeyboardEvent(type, init));
 }
 
 function fireComposition(
@@ -398,10 +308,8 @@ export function synthesize(
   }
 
   for (const ev of queued) {
-    if (ev.type === 4 || ev.type === 5) {
-      fireKey(out, ev, opts);
-      continue;
-    }
+    // Key and wheel: BrowserWindow already dispatches these. Drain the record.
+    if (ev.type === 4 || ev.type === 5) continue;
     if (
       ev.type === NATIVE_EVENT_COMPOSITION_START ||
       ev.type === NATIVE_EVENT_COMPOSITION_UPDATE ||
@@ -416,7 +324,6 @@ export function synthesize(
       if (moved(state, snap) && (snap.inside || state.inside)) {
         fireMove(out, state, snap, live);
       }
-      fireWheel(out, state, snap, ev, opts);
       state = snap;
       continue;
     }
@@ -443,7 +350,7 @@ export function synthesize(
       const up: PointerSnapshot = { ...snap, buttons: snap.buttons & ~bit };
       const count = Math.max(ev.clickCount || 1, counts[ev.button] ?? 1);
       delete counts[ev.button];
-      fireButtonUp(out, state, up, ev.button, count, snap.inside, opts);
+      fireButtonUp(out, state, up, ev.button, count, opts);
       state = up;
     }
   }

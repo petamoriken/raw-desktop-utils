@@ -1,11 +1,9 @@
 import { assertEquals } from "@std/assert";
 import {
   CompositionEvent,
-  KeyboardEvent,
   MouseEvent,
   PointerEvent,
   UIEvent,
-  WheelEvent,
 } from "../src/events.ts";
 import {
   bitFromButton,
@@ -38,32 +36,21 @@ Deno.test("event inheritance matches UI Events", () => {
   assertEquals(p.getCoalescedEvents(), []);
 });
 
-Deno.test("wheel and keyboard construct", () => {
-  const w = new WheelEvent("wheel", { deltaY: 40, deltaMode: 0, clientX: 1 });
-  assertEquals(w.deltaY, 40);
-  assertEquals(w.deltaMode, WheelEvent.DOM_DELTA_PIXEL);
-  const k = new KeyboardEvent("keydown", {
-    key: "a",
-    code: "KeyA",
+Deno.test("pointer getModifierState and composition construct", () => {
+  const p = new PointerEvent("pointermove", {
     ctrlKey: true,
     capsLock: true,
-    isComposing: true,
-    repeat: true,
-    location: KeyboardEvent.DOM_KEY_LOCATION_LEFT,
   });
-  assertEquals(k.key, "a");
-  assertEquals(k.repeat, true);
-  assertEquals(k.isComposing, true);
-  assertEquals(k.location, KeyboardEvent.DOM_KEY_LOCATION_LEFT);
-  assertEquals(k.getModifierState("Control"), true);
-  assertEquals(k.getModifierState("Shift"), false);
-  assertEquals(k.getModifierState("CapsLock"), true);
-  assertEquals(k.getModifierState("Accel"), Deno.build.os !== "darwin");
+  assertEquals(p.getModifierState("Control"), true);
+  assertEquals(p.getModifierState("Shift"), false);
+  assertEquals(p.getModifierState("CapsLock"), true);
+  assertEquals(p.getModifierState("Accel"), Deno.build.os !== "darwin");
   assertEquals(
-    new KeyboardEvent("keydown", { metaKey: true }).getModifierState("Accel"),
+    new PointerEvent("pointermove", { metaKey: true }).getModifierState(
+      "Accel",
+    ),
     Deno.build.os === "darwin",
   );
-  assertEquals(new KeyboardEvent("keydown").isComposing, false);
   const c = new CompositionEvent("compositionupdate", { data: "あ" });
   assertEquals(c instanceof UIEvent, true);
   assertEquals(c.data, "あ");
@@ -99,8 +86,6 @@ Deno.test("inspecting event prototypes does not throw", () => {
       UIEvent.prototype,
       MouseEvent.prototype,
       PointerEvent.prototype,
-      WheelEvent.prototype,
-      KeyboardEvent.prototype,
       CompositionEvent.prototype,
     ]
   ) {

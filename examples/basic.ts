@@ -30,13 +30,13 @@ input.addEventListener("pointerdown", (event) => {
 input.addEventListener("pointerup", (event) => {
   console.log("up", event.button, event.clientX, event.clientY);
 });
-input.addEventListener("wheel", (event) => {
+
+win.addEventListener("wheel", (event) => {
   console.log("wheel", event.deltaX, event.deltaY);
 });
-input.addEventListener("keydown", (event) => {
+win.addEventListener("keydown", (event) => {
   console.log("key", event.key, event.code);
 });
-
 win.addEventListener("close", () => {
   input.close();
   Deno.exit(0);

@@ -117,7 +117,7 @@ input.addEventListener("pointerup", (event) => {
   down = null;
 });
 
-input.addEventListener("keydown", (event) => {
+win.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     quit();
     return;
@@ -134,7 +134,7 @@ input.addEventListener("keydown", (event) => {
   });
 });
 
-input.addEventListener("keyup", (event) => {
+win.addEventListener("keyup", (event) => {
   record("keyup", {
     key: event.key,
     code: event.code,

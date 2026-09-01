@@ -1,11 +1,5 @@
-import { assert, assertEquals } from "@std/assert";
-import {
-  type CompositionEvent,
-  type KeyboardEvent,
-  MouseEvent,
-  PointerEvent,
-  WheelEvent,
-} from "../src/events.ts";
+import { assertEquals } from "@std/assert";
+import type { CompositionEvent, PointerEvent } from "../src/events.ts";
 import { snapshotEqual, synthesize } from "../src/synthesize.ts";
 import {
   BUTTONS_PRIMARY,
@@ -81,9 +75,7 @@ Deno.test("first sample inside fires enter events", () => {
   const { events } = synthesize(null, snap({ clientX: 10, clientY: 20 }));
   assertEquals(typesOf(events), [
     "pointerover",
-    "mouseover",
     "pointerenter",
-    "mouseenter",
   ]);
   const first = events[0] as PointerEvent;
   assertEquals(first.clientX, 10);
@@ -97,18 +89,16 @@ Deno.test("leaving the view fires leave events", () => {
   );
   assertEquals(typesOf(events), [
     "pointerout",
-    "mouseout",
     "pointerleave",
-    "mouseleave",
   ]);
 });
 
-Deno.test("movement synthesizes pointermove and mousemove", () => {
+Deno.test("movement synthesizes pointermove", () => {
   const { events } = synthesize(
     snap({ clientX: 10, clientY: 20 }),
     snap({ clientX: 14, clientY: 24 }),
   );
-  assertEquals(typesOf(events), ["pointermove", "mousemove"]);
+  assertEquals(typesOf(events), ["pointermove"]);
   const p = events[0] as PointerEvent;
   assertEquals(p.button, -1);
   assertEquals(p.movementX, 4);
@@ -116,31 +106,26 @@ Deno.test("movement synthesizes pointermove and mousemove", () => {
   assertEquals(p.pressure, 0);
 });
 
-Deno.test("left button down/up synthesizes click", () => {
+Deno.test("left button down/up synthesizes pointerdown/up", () => {
   const mid = snap({ clientX: 40, clientY: 50, buttons: BUTTONS_PRIMARY });
   const down = synthesize(snap({ clientX: 40, clientY: 50 }), mid);
-  assertEquals(typesOf(down.events), ["pointerdown", "mousedown"]);
+  assertEquals(typesOf(down.events), ["pointerdown"]);
   const pd = down.events[0] as PointerEvent;
   assertEquals(pd.button, 0);
   assertEquals(pd.buttons, 1);
   assertEquals(pd.pressure, 0.5);
 
   const up = synthesize(mid, snap({ clientX: 40, clientY: 50, buttons: 0 }));
-  assertEquals(typesOf(up.events), ["pointerup", "mouseup", "click"]);
+  assertEquals(typesOf(up.events), ["pointerup"]);
 });
 
-Deno.test("right button up synthesizes auxclick and contextmenu", () => {
+Deno.test("right button up is pointerup only", () => {
   const held = snap({ buttons: BUTTONS_SECONDARY, clientX: 1, clientY: 1 });
   const { events } = synthesize(
     held,
     snap({ buttons: 0, clientX: 1, clientY: 1 }),
   );
-  assertEquals(typesOf(events), [
-    "pointerup",
-    "mouseup",
-    "auxclick",
-    "contextmenu",
-  ]);
+  assertEquals(typesOf(events), ["pointerup"]);
   assertEquals((events[0] as PointerEvent).button, 2);
 });
 
@@ -170,14 +155,11 @@ Deno.test("queued down/up is authoritative", () => {
   );
   assertEquals(typesOf(events), [
     "pointerdown",
-    "mousedown",
     "pointerup",
-    "mouseup",
-    "click",
   ]);
 });
 
-Deno.test("queued wheel becomes WheelEvent", () => {
+Deno.test("queued wheel is not a session event", () => {
   const { events } = synthesize(
     snap({ clientX: 2, clientY: 3 }),
     snap({ clientX: 2, clientY: 3 }),
@@ -191,10 +173,10 @@ Deno.test("queued wheel becomes WheelEvent", () => {
       }),
     ],
   );
-  assert(events.some((e) => e instanceof WheelEvent && e.deltaY === 48));
+  assertEquals(typesOf(events), []);
 });
 
-Deno.test("queued keydown becomes KeyboardEvent", () => {
+Deno.test("queued keydown is not a session event", () => {
   const { events } = synthesize(snap(), snap(), [
     queued({
       type: NATIVE_EVENT_KEY_DOWN,
@@ -203,30 +185,18 @@ Deno.test("queued keydown becomes KeyboardEvent", () => {
       keyCode: 0,
     }),
   ]);
-  assertEquals(typesOf(events), ["keydown"]);
+  assertEquals(typesOf(events), []);
 });
 
-Deno.test("mouseEvents: false omits compatibility events", () => {
-  const { events } = synthesize(
-    snap({ clientX: 0, clientY: 0 }),
-    snap({ clientX: 1, clientY: 1, buttons: BUTTONS_PRIMARY }),
-    [],
-    { mouseEvents: false },
-  );
-  assertEquals(typesOf(events), ["pointermove", "pointerdown"]);
-  assert(events.every((e) => e instanceof PointerEvent));
-});
-
-Deno.test("pointerup outside the view does not click", () => {
+Deno.test("pointerup outside the view still fires pointerup", () => {
   const { events } = synthesize(
     snap({ buttons: BUTTONS_PRIMARY, clientX: 10, clientY: 10 }),
     snap({ inside: false, buttons: 0, clientX: -4, clientY: -4 }),
   );
-  assertEquals(events.some((e) => e.type === "click"), false);
   assertEquals(events.some((e) => e.type === "pointerup"), true);
 });
 
-Deno.test("dblclick comes from clickCount 2", () => {
+Deno.test("clickCount 2 is pointer detail, not a session dblclick", () => {
   const start = snap({ clientX: 1, clientY: 1 });
   const { events } = synthesize(start, snap({ clientX: 1, clientY: 1 }), [
     queued({
@@ -246,10 +216,9 @@ Deno.test("dblclick comes from clickCount 2", () => {
       clickCount: 2,
     }),
   ]);
-  assertEquals(
-    events.some((e) => e instanceof MouseEvent && e.type === "dblclick"),
-    true,
-  );
+  assertEquals(typesOf(events), ["pointerdown", "pointerup"]);
+  assertEquals((events[0] as PointerEvent).detail, 2);
+  assertEquals((events[1] as PointerEvent).detail, 2);
 });
 
 Deno.test("snapshotEqual uses Object.is so NaN matches NaN", () => {
@@ -317,13 +286,13 @@ Deno.test("a queued press still wins when the snapshot has not caught up", () =>
       }),
     ],
   );
-  assertEquals(typesOf(events), ["pointerdown", "mousedown"]);
+  assertEquals(typesOf(events), ["pointerdown"]);
   assertEquals((events[0] as PointerEvent).detail, 2);
 });
 
 Deno.test("a release reports the count of the press it ends", () => {
   // The queue counted the second press; the snapshot, one poll later, is the
-  // only one that sees the release. `dblclick` still has to fire.
+  // only one that sees the release.
   const down = synthesize(
     snap({ buttons: 0 }),
     snap({ buttons: BUTTONS_PRIMARY }),
@@ -344,43 +313,9 @@ Deno.test("a release reports the count of the press it ends", () => {
     [],
     { clickCounts: down.clickCounts },
   );
-  assertEquals(typesOf(up.events), [
-    "pointerup",
-    "mouseup",
-    "click",
-    "dblclick",
-  ]);
+  assertEquals(typesOf(up.events), ["pointerup"]);
+  assertEquals((up.events[0] as PointerEvent).detail, 2);
   assertEquals(up.clickCounts[0], undefined);
-});
-
-Deno.test("a queued key carries KeyboardEvent.location", () => {
-  const { events } = synthesize(snap(), snap(), [
-    queued({
-      type: NATIVE_EVENT_KEY_DOWN,
-      key: "Shift",
-      code: "ShiftRight",
-      location: 2,
-    }),
-  ]);
-  assertEquals(typesOf(events), ["keydown"]);
-  assertEquals((events[0] as KeyboardEvent).location, 2);
-});
-
-Deno.test("a queued key carries repeat, isComposing, and CapsLock", () => {
-  const { events } = synthesize(snap(), snap(), [
-    queued({
-      type: NATIVE_EVENT_KEY_DOWN,
-      key: "a",
-      code: "KeyA",
-      repeat: true,
-      isComposing: true,
-      modifiers: 16, // MOD_CAPS
-    }),
-  ]);
-  const ev = events[0] as KeyboardEvent;
-  assertEquals(ev.repeat, true);
-  assertEquals(ev.isComposing, true);
-  assertEquals(ev.getModifierState("CapsLock"), true);
 });
 
 Deno.test("queued composition events become CompositionEvent", () => {
@@ -430,11 +365,8 @@ Deno.test("a drag keeps reporting after it leaves the view", () => {
   });
   assertEquals(typesOf(left.events), [
     "pointerout",
-    "mouseout",
     "pointerleave",
-    "mouseleave",
     "pointermove",
-    "mousemove",
   ]);
   const move = left.events.find((e) =>
     e.type === "pointermove"
@@ -449,12 +381,12 @@ Deno.test("a drag keeps reporting after it leaves the view", () => {
     inside: false,
   });
   const second = synthesize(outside, farther, [], { captured: left.captured });
-  assertEquals(typesOf(second.events), ["pointermove", "mousemove"]);
+  assertEquals(typesOf(second.events), ["pointermove"]);
 
   // The release drops the capture.
   const up = snap({ clientX: -60, clientY: 950, buttons: 0, inside: false });
   const end = synthesize(farther, up, [], { captured: second.captured });
-  assertEquals(typesOf(end.events), ["pointerup", "mouseup"]);
+  assertEquals(typesOf(end.events), ["pointerup"]);
   assertEquals(end.captured, false);
 });
 
@@ -480,7 +412,7 @@ Deno.test("hovering outside the view reports nothing", () => {
   assertEquals(typesOf(synthesize(a, b).events), []);
 });
 
-Deno.test("a queued release past the edge is not a re-entry or a click", () => {
+Deno.test("a queued release past the edge is not a re-entry", () => {
   const { events } = synthesize(
     snap({ clientX: 10, clientY: 10, buttons: BUTTONS_PRIMARY }),
     snap({ clientX: -40, clientY: 900, buttons: 0, inside: false }),
@@ -497,12 +429,8 @@ Deno.test("a queued release past the edge is not a re-entry or a click", () => {
   );
   assertEquals(typesOf(events), [
     "pointerout",
-    "mouseout",
     "pointerleave",
-    "mouseleave",
     "pointermove",
-    "mousemove",
     "pointerup",
-    "mouseup",
   ]);
 });

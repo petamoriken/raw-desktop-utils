@@ -1,10 +1,16 @@
 # raw-desktop-utils
 
-Utilities for [`deno desktop`](https://docs.deno.com/runtime/desktop/) raw
-`BrowserWindow`s. `attach(window)` returns an `InputSession`. Native click /
-wheel / key events wake the session; `requestAnimationFrame` also samples the
-pointer before the callback. Listen on the **session**, not on `BrowserWindow`.
-`poll()` is still there for tests.
+A supplement for [`deno desktop`](https://docs.deno.com/runtime/desktop/) raw
+`BrowserWindow`s. If the host already has the API, use that: mouse, keyboard,
+and wheel events, `resize` / `move` / `focus` / `blur` / `close`, and the
+desktop `KeyboardEvent` / `MouseEvent` / `WheelEvent` classes. This package adds
+what the host does not — Pointer Events (with `buttons` and capture),
+composition, a `requestAnimationFrame` that ticks without `present()`, and
+window / `Screen` geometry.
+
+`attach(window)` returns an `InputSession`. Native pointer and composition
+events wake the session; `requestAnimationFrame` also samples the pointer before
+the callback. `poll()` is still there for tests.
 
 Also a standalone
 [Web Audio](https://developer.mozilla.org/docs/Web/API/Web_Audio_API) subset
@@ -36,6 +42,11 @@ loads a committed prebuilt (`native/prebuilt/`). Refresh it in this repo with
 const win = new Deno.BrowserWindow({ title: "Game", width: 1280, height: 720 });
 using input = await attach(win, { title: "Game" });
 
+win.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") win.close();
+});
+win.addEventListener("close", () => Deno.exit(0));
+
 input.addEventListener("pointermove", (event) => {
   game.hover(event.clientX, event.clientY);
 });
@@ -58,7 +69,6 @@ input.requestAnimationFrame(frame);
 | `native`          | Existing `NSView*` / `HWND` / X11 window / `wl_surface*`.                       |
 | `display`         | Wayland `wl_display*` (`getNativeWindow().displayHandle`).                      |
 | `target`          | Extra `EventTarget` that also receives copies of each event.                    |
-| `mouseEvents`     | Also fire `mousedown` / `click` / `contextmenu` (default `true`).               |
 | `locateTimeoutMs` | How long to wait for the window to appear (default 500).                        |
 
 `attach` finds the view from `options.native` or `title` first. It only calls
@@ -76,16 +86,9 @@ names (the locale prefix is omitted so MDN redirects to the reader's language).
 - [`EventTarget`](https://developer.mozilla.org/docs/Web/API/EventTarget) /
   [`addEventListener`](https://developer.mozilla.org/docs/Web/API/EventTarget/addEventListener)
 - [`UIEvent`](https://developer.mozilla.org/docs/Web/API/UIEvent)
-- [`MouseEvent`](https://developer.mozilla.org/docs/Web/API/MouseEvent)
-  (`click`, `dblclick`, `auxclick`, `contextmenu`, `mouse*`)
+- [`MouseEvent`](https://developer.mozilla.org/docs/Web/API/MouseEvent) (base of
+  `PointerEvent`; listen for `click` / `mouse*` / `wheel` on `BrowserWindow`)
 - [`PointerEvent`](https://developer.mozilla.org/docs/Web/API/PointerEvent)
-- [`WheelEvent`](https://developer.mozilla.org/docs/Web/API/WheelEvent)
-- [`KeyboardEvent`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent)
-  ([`key`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/key),
-  [`code`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/code),
-  [`repeat`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/repeat),
-  [`isComposing`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/isComposing),
-  [`getModifierState`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/getModifierState))
 - [`CompositionEvent`](https://developer.mozilla.org/docs/Web/API/CompositionEvent)
 - [`Window.requestAnimationFrame`](https://developer.mozilla.org/docs/Web/API/Window/requestAnimationFrame)
   /
@@ -151,20 +154,21 @@ src.start();
 
 ## Differences from the standard
 
-There is no document tree. Events do not hit-test, capture, or bubble through
-elements — they fire on the **session** (and on `options.target` if you pass
-one). [`clientX`](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientX)
-/ [`clientY`](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientY)
-still use a top-left origin in the content view, the same space as `getSize()`.
+There is no document tree. Session events do not hit-test, capture, or bubble
+through elements — they fire on the **session** (and on `options.target` if you
+pass one).
+[`clientX`](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientX) /
+[`clientY`](https://developer.mozilla.org/docs/Web/API/MouseEvent/clientY) still
+use a top-left origin in the content view, the same space as `getSize()`.
 
 A press that starts inside the view keeps sending `pointermove` after the cursor
-leaves, with out-of-range coordinates, until the button comes up. That release
-is not a `click`. A drag that started in another window stays silent.
+leaves, with out-of-range coordinates, until the button comes up. A drag that
+started in another window stays silent.
 
-[`getModifierState`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/getModifierState)
-answers `Alt`, `AltGraph`, `Control`, `Meta`, `Shift`, `CapsLock`, and `Accel`
-(`Meta` on macOS, `Control` elsewhere). Other modifier names are `false`.
-`capsLock` on `MouseEventInit` / `KeyboardEventInit` is an extension that seeds
+[`getModifierState`](https://developer.mozilla.org/docs/Web/API/MouseEvent/getModifierState)
+on session pointer events answers `Alt`, `AltGraph`, `Control`, `Meta`, `Shift`,
+`CapsLock`, and `Accel` (`Meta` on macOS, `Control` elsewhere). Other modifier
+names are `false`. `capsLock` on `MouseEventInit` is an extension that seeds
 that bit.
 
 Composition events fire only when the host window is composing. On raw
@@ -183,9 +187,6 @@ Composition events fire only when the host window is composing. On raw
 - `devicePixelRatio` is `1`. `clientX` and `getSize()` already use the pixels
   the window occupies, even when the OS scale is 150%. Do not multiply by the
   display scale.
-- `KeyboardEvent.code` assumes a US layout for punctuation keys. A numpad key
-  with NumLock off arrives as its navigation key (`Home`, not `Numpad7`). `key`
-  follows the active layout.
 - No pen pressure or tilt.
 - The window can be found by `title`.
 
@@ -194,9 +195,7 @@ Composition events fire only when the host window is composing. On raw
 - X11: `devicePixelRatio` is `1`. The window can be found by `title`.
 - Wayland: pass `options.native` and `display`. There is no title lookup.
   `screenX` and `outer*` stay `0`; inner size falls back to `getSize()`.
-  `KeyboardEvent.repeat` is always `false`.
 - No composition events.
-- `KeyboardEvent.code` is empty. `key` is the character that was typed.
 
 ## Known issues in deno desktop
 
@@ -222,11 +221,31 @@ others are linked from their Related sections.
   - [denoland/deno#36001](https://github.com/denoland/deno/issues/36001) —
     Windows raw WebGPU `present()` panics (`RefCell already mutably borrowed`).
 
-`BrowserWindow` can still emit incomplete mouse events and double-fire; listen
-on the session. Raw winit `requestAnimationFrame` does not tick unless something
-presents. On macOS and Linux the native helper wakes the session for queued
-events, so listeners still run. On Windows, call `poll()` or present so host rAF
-ticks.
+On raw macOS, `BrowserWindow` mouse and key events are thinner than a browser's
+(checked against a Retina window whose constructor size was 480×320):
+
+- `getSize()`, `resize`, and `clientX` / `clientY` use physical pixels. The same
+  window reports 960×640. Those fields agree with each other, not with the
+  constructor's logical size.
+- `screenX` / `screenY` copy `clientX` / `clientY`.
+- There is no `buttons`. `mousemove` during a drag still has `button: 0`.
+- The first `mouseenter` is `(0, 0)`. Later enter / leave reuse the last inside
+  point, not the crossing.
+- `resize` fires twice with the same `detail` when the window opens.
+- `dblclick` does not fire.
+- A scroll down reports a negative `deltaY` (`deltaMode` is line, not pixel).
+- Shift does not emit `keydown` / `keyup`. `shiftKey` can stay `true` on later
+  mouse events if the host never sees the Shift release.
+
+Host `BrowserWindow` input events set
+[`timeStamp`](https://developer.mozilla.org/docs/Web/API/Event/timeStamp) to `0`
+on purpose (cheaper than sampling the clock). That is not a missing field.
+
+Raw winit `requestAnimationFrame` does not tick unless something presents. On
+macOS and Linux the native helper wakes the session for queued events, so
+pointer listeners still run. On Windows, call `poll()` or present so host rAF
+ticks. Do not also listen on the session for `mousedown` / `keydown` / `wheel` —
+those stay on `BrowserWindow`, or the same physical input arrives twice.
 
 ## Native helper
 

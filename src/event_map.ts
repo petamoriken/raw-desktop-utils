@@ -1,10 +1,4 @@
-import type {
-  CompositionEvent,
-  KeyboardEvent,
-  MouseEvent,
-  PointerEvent,
-  WheelEvent,
-} from "./events.ts";
+import type { CompositionEvent, PointerEvent } from "./events.ts";
 
 export interface InputSessionEventMap {
   pointerover: PointerEvent;
@@ -15,20 +9,6 @@ export interface InputSessionEventMap {
   pointercancel: PointerEvent;
   pointerout: PointerEvent;
   pointerleave: PointerEvent;
-  mouseover: MouseEvent;
-  mouseenter: MouseEvent;
-  mousedown: MouseEvent;
-  mousemove: MouseEvent;
-  mouseup: MouseEvent;
-  mouseout: MouseEvent;
-  mouseleave: MouseEvent;
-  click: MouseEvent;
-  dblclick: MouseEvent;
-  auxclick: MouseEvent;
-  contextmenu: MouseEvent;
-  wheel: WheelEvent;
-  keydown: KeyboardEvent;
-  keyup: KeyboardEvent;
   compositionstart: CompositionEvent;
   compositionupdate: CompositionEvent;
   compositionend: CompositionEvent;

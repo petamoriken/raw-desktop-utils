@@ -55,7 +55,6 @@ export class InputSession extends EventTarget {
   readonly #native: NativeBackend;
   readonly #handle: Deno.PointerValue;
   readonly #target: EventTarget | null;
-  readonly #mouseEvents: boolean;
   #prev: PointerSnapshot | null = null;
   #clickCounts: ClickCounts = {};
   #captured = false;
@@ -81,7 +80,6 @@ export class InputSession extends EventTarget {
     this.#native = native;
     this.#handle = handle;
     this.#target = options.target ?? null;
-    this.#mouseEvents = options.mouseEvents !== false;
     this.#hasNotify = native.setNotify?.(() => this.#onNativeWake()) === true;
   }
 
@@ -262,7 +260,6 @@ export class InputSession extends EventTarget {
       next,
       queued,
       {
-        mouseEvents: this.#mouseEvents,
         view: this.window,
         clickCounts: this.#clickCounts,
         captured: this.#captured,
