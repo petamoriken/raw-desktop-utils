@@ -47,13 +47,13 @@ take `--allow-run`.
   After changing `native/rdu/src/audio.rs`, rebuild the prebuilt. ABI is 3.
 - `InputSession.poll()` diffs a native snapshot plus a queued event list into
   Pointer / Mouse / Wheel / Keyboard / Composition events. The session also
-  polls on native wakeup (`rdu_set_notify`, macOS / Linux) and immediately
+  polls on native wakeup (`rdu_set_notify`, every backend) and immediately
   before `requestAnimationFrame` callbacks. Listeners go on the **session**, not
-  `BrowserWindow` (that source can double-fire). Keep `poll()` for tests and
-  Windows (no wakeup yet). On macOS the queue is a local NSEvent monitor plus a
-  4 ms Combined Session button and key sampler. Do not add a CGEvent tap or
-  global monitor (those need Input Monitoring / Accessibility). Quartz posts
-  update `mouseLocation` (hover works) but often skip the local monitor and
+  `BrowserWindow` (that source can double-fire). Keep `poll()` for tests and the
+  fallback frame clock. On macOS the queue is a local NSEvent monitor plus a 4
+  ms Combined Session button and key sampler. Do not add a CGEvent tap or global
+  monitor (those need Input Monitoring / Accessibility). Quartz posts update
+  `mouseLocation` (hover works) but often skip the local monitor and
   `NSEvent.pressedMouseButtons`. Off-main AppKit work hops to the main queue
   when it pumps, and runs inline under `deno test` so `exec_sync` cannot
   deadlock. Never invoke JS from the monitor, hook, or sampler: `wakeup.rs`
@@ -96,6 +96,13 @@ take `--allow-run`.
   the window's thread (the analogue of the macOS local monitor). It only reads
   messages when `wParam == PM_REMOVE`, otherwise a `PeekMessage` without
   `PM_REMOVE` reports them twice.
+- Windows movement wakes from `WM_MOUSEMOVE` / `WM_MOUSELEAVE` and from raw
+  input, never from a queued event: the cursor rides the snapshot. `notify_move`
+  runs on the host's message thread at the mouse's report rate, so it throttles
+  before the hit test, and it has to wake on the move that _leaves_ or
+  `pointerout` waits for a frame. `WM_MOUSEMOVE` stops at the window edge, which
+  is why `WM_MOUSELEAVE` is in there (winit arms `TrackMouseEvent` itself; do
+  not arm it on the host's behalf).
 - That hook is not enough on its own, so `rdu_attach` also registers raw input
   with `RIDEV_INPUTSINK`. When `deno desktop` runs on its WebView2 backend the
   window under the cursor belongs to a separate `msedgewebview2` process, and

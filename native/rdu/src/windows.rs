@@ -7,7 +7,8 @@ use std::ffi::{c_void, CStr};
 use std::mem::size_of;
 use std::os::raw::c_char;
 use std::ptr;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{
@@ -47,7 +48,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     RI_MOUSE_RIGHT_BUTTON_DOWN, RI_MOUSE_RIGHT_BUTTON_UP, RI_MOUSE_WHEEL, SM_CXDOUBLECLK,
     SM_CYDOUBLECLK, SM_SWAPBUTTON, WHEEL_DELTA, WH_GETMESSAGE, WM_INPUT, WM_KEYDOWN, WM_KEYUP,
     WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK, WM_MBUTTONDOWN,
-    WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEWHEEL, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN,
+    WM_RBUTTONUP,
     WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDBLCLK, WM_XBUTTONDOWN, WM_XBUTTONUP, XBUTTON1,
 };
 
@@ -60,6 +62,10 @@ use crate::abi::{
 
 /// One wheel notch in CSS pixels. Same value the X11 backend reports.
 const WHEEL_STEP: f32 = 16.0;
+
+/// `windows-sys` files this under `Win32_UI_Controls`, a feature this crate
+/// does not otherwise need.
+const WM_MOUSELEAVE: u32 = 0x02A3;
 
 /// `GetMessageExtraInfo` signature for pen / touch synthesized mouse input.
 const PEN_SIGNATURE: usize = 0xFF51_5700;
@@ -596,9 +602,31 @@ fn remember_click(state: &mut State, button: u32, count: u32) {
     }
 }
 
+/// Movement queues nothing, so it wakes the session itself. Runs on the host's
+/// message thread at the mouse's report rate: throttle before the hit test.
+fn notify_move(hwnd: HWND) {
+    const INTERVAL_MS: u64 = 4;
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    static LAST_MS: AtomicU64 = AtomicU64::new(0);
+    static INSIDE: AtomicBool = AtomicBool::new(false);
+
+    let now = EPOCH.get_or_init(Instant::now).elapsed().as_millis() as u64;
+    if now.wrapping_sub(LAST_MS.load(Ordering::Relaxed)) < INTERVAL_MS {
+        return;
+    }
+    LAST_MS.store(now, Ordering::Relaxed);
+
+    let inside = cursor_over_view(hwnd).is_some();
+    // The move that leaves still has to wake, or `pointerout` waits a frame.
+    if INSIDE.swap(inside, Ordering::Relaxed) || inside {
+        crate::wakeup::notify();
+    }
+}
+
 fn handle_raw_mouse(hwnd: HWND, mouse: &RAWMOUSE) {
     let flags = unsafe { mouse.Anonymous.Anonymous.usButtonFlags } as u32;
     if flags == 0 {
+        notify_move(hwnd);
         return;
     }
     let over = cursor_over_view(hwnd);
@@ -932,6 +960,12 @@ fn handle_message(msg: &MSG) {
 
     if msg.message == WM_INPUT {
         handle_raw_input(hwnd, msg.lParam as HRAWINPUT);
+        return;
+    }
+    // Raw input covers hosts that keep the pointer in another process.
+    // `WM_MOUSEMOVE` stops at the edge, so the leave needs its own message.
+    if msg.message == WM_MOUSEMOVE || msg.message == WM_MOUSELEAVE {
+        notify_move(hwnd);
         return;
     }
 

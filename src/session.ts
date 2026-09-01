@@ -253,7 +253,7 @@ export class InputSession extends EventTarget {
     if (added) this.#listening = true;
     if (this.#closed) return;
     // Host rAF may not tick without a present; keep a frame clock when the
-    // native helper cannot wake us (Windows, tests without setNotify).
+    // native helper cannot wake us (a backend without setNotify).
     if (this.#listening && !this.#hasNotify) this.#startClock();
     else this.#stopClock();
   }

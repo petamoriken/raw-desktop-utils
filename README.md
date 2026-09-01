@@ -4,8 +4,7 @@ Utilities for [`deno desktop`](https://docs.deno.com/runtime/desktop/) raw
 `BrowserWindow`s. `attach(window)` returns an `InputSession`. Native click /
 wheel / key events wake the session; `requestAnimationFrame` also samples the
 pointer before the callback. Listen on the **session**, not on `BrowserWindow`.
-`poll()` is still there for tests and for Windows (wakeup is macOS / Linux only
-for now).
+`poll()` is still there for tests.
 
 Also a standalone
 [Web Audio](https://developer.mozilla.org/docs/Web/API/Web_Audio_API) subset
