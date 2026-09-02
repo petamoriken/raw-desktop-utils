@@ -233,7 +233,6 @@ On raw macOS, `BrowserWindow` mouse and key events are thinner than a browser's
   point, not the crossing.
 - `resize` fires twice with the same `detail` when the window opens.
 - `dblclick` does not fire.
-- A scroll down reports a negative `deltaY` (`deltaMode` is line, not pixel).
 - Shift does not emit `keydown` / `keyup`. `shiftKey` can stay `true` on later
   mouse events if the host never sees the Shift release.
 
