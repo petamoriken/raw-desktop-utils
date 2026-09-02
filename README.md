@@ -227,10 +227,6 @@ On raw macOS, `BrowserWindow` mouse and key events are thinner than a browser's
 - `getSize()`, `resize`, and `clientX` / `clientY` use physical pixels. The same
   window reports 960×640. Those fields agree with each other, not with the
   constructor's logical size.
-- `screenX` / `screenY` copy `clientX` / `clientY`.
-- There is no `buttons`. `mousemove` during a drag still has `button: 0`.
-- The first `mouseenter` is `(0, 0)`. Later enter / leave reuse the last inside
-  point, not the crossing.
 - `resize` fires twice with the same `detail` when the window opens.
 - Shift does not emit `keydown` / `keyup`. `shiftKey` can stay `true` on later
   mouse events if the host never sees the Shift release.
