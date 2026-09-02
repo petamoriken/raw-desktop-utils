@@ -232,7 +232,6 @@ On raw macOS, `BrowserWindow` mouse and key events are thinner than a browser's
 - The first `mouseenter` is `(0, 0)`. Later enter / leave reuse the last inside
   point, not the crossing.
 - `resize` fires twice with the same `detail` when the window opens.
-- `dblclick` does not fire.
 - Shift does not emit `keydown` / `keyup`. `shiftKey` can stay `true` on later
   mouse events if the host never sees the Shift release.
 
