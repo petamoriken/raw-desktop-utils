@@ -15,8 +15,7 @@ Those host bugs start at
 off) and [denoland/deno#36738](https://github.com/denoland/deno/issues/36738)
 (`getNativeWindow()` panics off-main on macOS); Related on those tickets reaches
 #36594 (no raw `.app` on aarch64-apple-darwin) and #36001 (Windows raw WebGPU
-`present()` panic). README also lists raw macOS `BrowserWindow` input gaps
-(sticky `shiftKey`).
+`present()` panic). README lists remaining host gaps on the Deno tickets above.
 Host `timeStamp` is `0` on purpose. Do not re-explain MDN types in the README or
 in source comments.
 

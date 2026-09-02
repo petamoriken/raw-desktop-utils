@@ -221,12 +221,6 @@ others are linked from their Related sections.
   - [denoland/deno#36001](https://github.com/denoland/deno/issues/36001) —
     Windows raw WebGPU `present()` panics (`RefCell already mutably borrowed`).
 
-On raw macOS, `BrowserWindow` mouse and key events are thinner than a browser's
-(checked against a Retina window whose constructor size was 480×320):
-
-- Shift does not emit `keydown` / `keyup`. `shiftKey` can stay `true` on later
-  mouse events if the host never sees the Shift release.
-
 Host `BrowserWindow` input events set
 [`timeStamp`](https://developer.mozilla.org/docs/Web/API/Event/timeStamp) to `0`
 on purpose (cheaper than sampling the clock). That is not a missing field.
