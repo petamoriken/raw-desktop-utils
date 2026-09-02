@@ -14,6 +14,7 @@ declare global {
         displayHandle?: Deno.PointerValue;
       };
       getSize(): [number, number];
+      readonly devicePixelRatio: number;
       close(): void;
       isClosed(): boolean;
     }
